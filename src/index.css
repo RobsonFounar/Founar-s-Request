@@ -1,0 +1,75 @@
+:root {
+  --bg: #0b1020;
+  --panel-bg: #10172a;
+  --surface: #172036;
+  --border: #24304b;
+  --text: #d7deed;
+  --text-h: #f8fafc;
+  --muted: #93a1bb;
+  --accent: #4f46e5;
+  --accent-bg: rgba(79, 70, 229, 0.16);
+  --accent-border: rgba(129, 140, 248, 0.6);
+  --sans: Inter, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  color-scheme: dark;
+  font: 16px/1.5 var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100vh;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top, rgba(79, 70, 229, 0.16), transparent 30%),
+    var(--bg);
+}
+
+#root {
+  width: 100%;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(2rem, 3vw, 3rem);
+  line-height: 1.05;
+  color: var(--text-h);
+  margin-bottom: 10px;
+}
+
+h2 {
+  font-size: 1.05rem;
+  color: var(--text-h);
+}
+
+h3 {
+  font-size: 0.95rem;
+  color: var(--text-h);
+}
+
+button,
+input,
+select,
+textarea,
+pre {
+  font-family: inherit;
+}
