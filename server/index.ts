@@ -50,7 +50,6 @@ type ExecutionResult = {
 
 const app = express()
 const port = Number(process.env.PORT ?? 8787)
-const isProduction = process.env.NODE_ENV === 'production'
 const currentFilePath = fileURLToPath(import.meta.url)
 const currentDir = dirname(currentFilePath)
 const distDir = join(currentDir, '..', 'dist')
@@ -172,7 +171,7 @@ app.post('/api/load-tests/run', async (req, res) => {
   })
 })
 
-if (isProduction && existsSync(distDir)) {
+if (existsSync(distDir)) {
   app.use(express.static(distDir))
 
   app.get(/^(?!\/api).*/, (_req, res) => {

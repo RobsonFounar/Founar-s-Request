@@ -43,7 +43,6 @@ No Render:
 - `Build Command`: `npm install && npm run build`
 - `Start Command`: `npm run start`
 - `Environment`: `Node`
-- `NODE_ENV=production`
 
 ## 4. Validar
 
