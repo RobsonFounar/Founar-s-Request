@@ -40,7 +40,7 @@ No Render:
 4. se usar `Blueprint`, o arquivo `render.yaml` do projeto deve ser detectado
 5. se criar manualmente um `Web Service`, use:
 
-- `Build Command`: `npm install && npm run build`
+- `Build Command`: `npm install --include=dev && npm run build`
 - `Start Command`: `npm run start`
 - `Environment`: `Node`
 

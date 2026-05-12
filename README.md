@@ -64,7 +64,7 @@ Em producao, o backend serve o frontend e as rotas `/api` no mesmo dominio.
 2. conectar o repositorio ao `Render`
 3. criar um `Web Service`
 4. usar:
-   - `Build Command`: `npm install && npm run build`
+   - `Build Command`: `npm install --include=dev && npm run build`
    - `Start Command`: `npm run start`
 5. compartilhar a URL gerada com o grupo
 

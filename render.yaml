@@ -3,5 +3,5 @@ services:
     name: founar-request-beta
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm run start
