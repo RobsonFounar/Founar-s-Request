@@ -52,9 +52,17 @@ export type RequestTab = {
   savedRequestId?: string
 }
 
+export type EnvironmentColor =
+  | 'verde'
+  | 'vermelho'
+  | 'amarelo'
+  | 'branco'
+  | 'lilas'
+
 export type EnvironmentItem = {
   id: string
   name: string
+  color: EnvironmentColor
   variables: KeyValueRow[]
 }
 

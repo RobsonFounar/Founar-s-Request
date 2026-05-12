@@ -9,6 +9,7 @@ import { executeRequest, runLoadTest } from './lib/requestRunner'
 import type {
   AuthConfig,
   CollectionItem,
+  EnvironmentColor,
   EnvironmentItem,
   ExecuteRequestInput,
   HistoryEntry,
@@ -44,6 +45,16 @@ const DEFAULT_LOAD_TEST_CONFIG: LoadTestConfig = {
   totalRequests: 20,
   concurrency: 5,
 }
+const ENVIRONMENT_COLOR_OPTIONS: Array<{
+  value: EnvironmentColor
+  label: string
+}> = [
+  { value: 'verde', label: 'Verde' },
+  { value: 'vermelho', label: 'Vermelho' },
+  { value: 'amarelo', label: 'Amarelo' },
+  { value: 'branco', label: 'Branco' },
+  { value: 'lilas', label: 'Lilas' },
+]
 
 const createRow = (key = '', value = ''): KeyValueRow => ({
   id: crypto.randomUUID(),
@@ -66,6 +77,7 @@ const createDefaultTab = (index: number): RequestTab => ({
 const createDefaultEnvironment = (index: number): EnvironmentItem => ({
   id: crypto.randomUUID(),
   name: index === 1 ? 'Default' : `Environment ${index}`,
+  color: 'branco',
   variables: [createRow()],
 })
 
@@ -454,6 +466,17 @@ function App() {
     collectionId: string,
     savedRequest: SavedRequestItem,
   ) => {
+    const existingTab = tabs.find(
+      (tab) =>
+        tab.collectionId === collectionId &&
+        tab.savedRequestId === savedRequest.id,
+    )
+
+    if (existingTab) {
+      setActiveTabId(existingTab.id)
+      return
+    }
+
     const nextTab = createTabFromSavedRequest(savedRequest, collectionId)
 
     setTabs((currentTabs) => [...currentTabs, nextTab])
@@ -886,6 +909,51 @@ function App() {
           {activeTab && (
             <>
               <section className="panel request-panel">
+                <div className="request-topbar">
+                  <div className="request-context request-context--top">
+                    <span className="request-context-pill">
+                      <span className="request-context-pill__label">
+                        Environment ativo:{' '}
+                      </span>
+                      <span
+                        className={`request-context-pill__value environment-color-text environment-color-text--${activeEnvironment?.color ?? 'branco'}`}
+                      >
+                        {activeEnvironment?.name ?? 'Nenhum'}
+                      </span>
+                    </span>
+                    <span className="request-context-pill">
+                      <span className="request-context-pill__label">
+                        Collection:{' '}
+                      </span>
+                      <span className="request-context-pill__value environment-color-text environment-color-text--branco">
+                        {activeCollection?.name ?? 'Nenhuma'}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <label className="request-name-row">
+                  <span className="request-name-row__label">Nome da aba</span>
+                  <input
+                    className="request-name-row__input"
+                    type="text"
+                    value={activeTab.name}
+                    onChange={(event) =>
+                      updateActiveTab((tab) => ({
+                        ...tab,
+                        name: event.target.value,
+                      }))
+                    }
+                  />
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => addTab(activeTab)}
+                  >
+                    Duplicar aba
+                  </button>
+                </label>
+
                 <div className="request-row">
                   <select
                     className="method-select"
@@ -918,54 +986,7 @@ function App() {
                   />
                 </div>
 
-                <div className="field-grid">
-                  <label className="field">
-                    <span>Nome da aba</span>
-                    <input
-                      type="text"
-                      value={activeTab.name}
-                      onChange={(event) =>
-                        updateActiveTab((tab) => ({
-                          ...tab,
-                          name: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-
-                  <div className="field field--inline">
-                    <span>Atalhos</span>
-                    <div className="field-actions">
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={() => addTab(activeTab)}
-                      >
-                        Duplicar aba
-                      </button>
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={() =>
-                          updateActiveTab((tab) => ({
-                            ...tab,
-                            response: undefined,
-                          }))
-                        }
-                      >
-                        Limpar resposta
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
                 <div className="request-context">
-                  <span className="info-pill">
-                    Environment ativo: {activeEnvironment?.name ?? 'Nenhum'}
-                  </span>
-                  <span className="info-pill">
-                    Collection ativa: {activeCollection?.name ?? 'Nenhuma'}
-                  </span>
                   {activeTab.savedRequestId && activeTab.collectionId && (
                     <span className="subtle">
                       Vinculada a uma request salva.
@@ -994,7 +1015,7 @@ function App() {
                     {activeTab.savedRequestId &&
                     activeTab.collectionId === activeCollection?.id
                       ? 'Atualizar request salva'
-                      : 'Salvar aba na collection'}
+                      : 'Salvar Request na Collection'}
                   </button>
                 </div>
               </section>
@@ -1060,7 +1081,7 @@ function App() {
                       <div>
                         <h2>Resposta</h2>
                         <p className="subtle">
-                          Status, headers e body da ultima execucao da aba atual.
+                          Status e resposta da ultima execucao da aba atual.
                         </p>
                       </div>
                       {activeTab.response && (
@@ -1084,27 +1105,22 @@ function App() {
                           </div>
                         )}
 
-                        <div className="response-section">
-                          <h3>Headers</h3>
-                          <div className="response-headers">
-                            {activeTab.response.headers.length === 0 ? (
-                              <span className="subtle">Sem headers retornados.</span>
-                            ) : (
-                              activeTab.response.headers.map((header) => (
-                                <div
-                                  className="header-row"
-                                  key={`${header.key}-${header.value}`}
-                                >
-                                  <strong>{header.key}</strong>
-                                  <span>{header.value}</span>
-                                </div>
-                              ))
-                            )}
-                          </div>
+                        <div className="response-actions">
+                          <button
+                            className="ghost-button ghost-button--compact"
+                            type="button"
+                            onClick={() =>
+                              updateActiveTab((tab) => ({
+                                ...tab,
+                                response: undefined,
+                              }))
+                            }
+                          >
+                            Limpar resposta
+                          </button>
                         </div>
 
                         <div className="response-section">
-                          <h3>Body</h3>
                           <pre>{activeTab.response.body || 'Resposta sem body.'}</pre>
                         </div>
                       </div>
@@ -1563,6 +1579,10 @@ function EnvironmentEditor({
   onDelete,
   onChange,
 }: EnvironmentEditorProps) {
+  const activeEnvironmentColorLabel = getEnvironmentColorLabel(
+    activeEnvironment.color,
+  )
+
   return (
     <div className="stack gap-sm">
       <div className="section-heading">
@@ -1591,19 +1611,49 @@ function EnvironmentEditor({
         </select>
       </label>
 
-      <label className="field">
-        <span>Nome</span>
-        <input
-          type="text"
-          value={activeEnvironment.name}
-          onChange={(event) =>
-            onChange({
-              ...activeEnvironment,
-              name: event.target.value,
-            })
-          }
-        />
-      </label>
+      <div className="field-grid">
+        <label className="field">
+          <span>Nome</span>
+          <input
+            type="text"
+            value={activeEnvironment.name}
+            onChange={(event) =>
+              onChange({
+                ...activeEnvironment,
+                name: event.target.value,
+              })
+            }
+          />
+        </label>
+
+        <label className="field">
+          <span>Cor do ambiente</span>
+          <select
+            className={`environment-color-select environment-color-text--${activeEnvironment.color}`}
+            value={activeEnvironment.color}
+            onChange={(event) =>
+              onChange({
+                ...activeEnvironment,
+                color: event.target.value as EnvironmentColor,
+              })
+            }
+          >
+            {ENVIRONMENT_COLOR_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <span className="field-preview">
+            Cor atual:{' '}
+            <span
+              className={`environment-color-text environment-color-text--${activeEnvironment.color}`}
+            >
+              {activeEnvironmentColorLabel}
+            </span>
+          </span>
+        </label>
+      </div>
 
       <p className="subtle helper-text">
         Use variaveis com o formato <code>{'{{baseUrl}}'}</code> em URL, headers,
@@ -2071,6 +2121,7 @@ function hydrateEnvironment(raw: EnvironmentItem): EnvironmentItem {
   return {
     id: raw.id ?? crypto.randomUUID(),
     name: raw.name ?? 'Environment',
+    color: raw.color ?? 'branco',
     variables:
       raw.variables?.map((row) => ({
         ...row,
@@ -2180,6 +2231,13 @@ function clampNumber(value: number, min: number, max: number) {
   }
 
   return Math.min(max, Math.max(min, Math.trunc(value)))
+}
+
+function getEnvironmentColorLabel(color: EnvironmentColor) {
+  return (
+    ENVIRONMENT_COLOR_OPTIONS.find((option) => option.value === color)?.label ??
+    'Branco'
+  )
 }
 
 export default App
