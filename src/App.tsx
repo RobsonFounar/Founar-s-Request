@@ -2633,7 +2633,8 @@ function EnvironmentVariablesEditor({
 
       <div className="environment-variables-list">
         {rows.map((row) => {
-          const previewName = row.key.trim() || 'nomeDaVariavel'
+          const keyTrimmed = row.key.trim()
+          const syntaxPreview = keyTrimmed ? `{{${keyTrimmed}}}` : '{{}}'
           const previewValue = row.value.trim() || 'Sem valor definido'
 
           return (
@@ -2642,7 +2643,12 @@ function EnvironmentVariablesEditor({
                 <label className="field">
                   <span>Nome da variavel</span>
                   <span className="field-preview">
-                    Nome atual: <code>{`{{${previewName}}}`}</code>
+                    Nome atual:{' '}
+                    {keyTrimmed ? (
+                      <code>{keyTrimmed}</code>
+                    ) : (
+                      <span className="subtle">—</span>
+                    )}
                   </span>
                   <input
                     type="text"
@@ -2680,7 +2686,7 @@ function EnvironmentVariablesEditor({
                 </label>
 
                 <p className="subtle helper-text environment-variable-card__usage">
-                  Uso na request: <code>{`{{${previewName}}}`}</code>
+                  Uso da Variavel: <code>{syntaxPreview}</code>
                 </p>
 
                 <div className="environment-variable-card__footer">
