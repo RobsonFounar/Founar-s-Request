@@ -255,7 +255,7 @@ function App() {
     readStorage<string>(ACTIVE_ENVIRONMENT_STORAGE_KEY, ''),
   )
   const [requestConfigTabId, setRequestConfigTabId] =
-    useState<RequestConfigTabId>('query')
+    useState<RequestConfigTabId>('body')
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0],
@@ -310,7 +310,7 @@ function App() {
   }, [activeTab])
 
   useEffect(() => {
-    setRequestConfigTabId('query')
+    setRequestConfigTabId('body')
   }, [activeTabId])
 
   useEffect(() => {
