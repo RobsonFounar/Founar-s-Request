@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import type { CSSProperties, MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import './App.css'
 import {
   collectMissingVariables,
@@ -367,12 +369,18 @@ function App() {
     )
   }
 
-  const addEnvironment = () => {
+  const addEnvironment = (name: string, color: EnvironmentColor) => {
+    const trimmed = name.trim()
+
+    if (!trimmed) {
+      return
+    }
+
     const nextEnvironment = createDefaultEnvironment(environments.length + 1)
 
     setEnvironments((currentEnvironments) => [
       ...currentEnvironments,
-      nextEnvironment,
+      { ...nextEnvironment, name: trimmed, color },
     ])
     setActiveEnvironmentId(nextEnvironment.id)
   }
@@ -402,26 +410,18 @@ function App() {
     setActiveEnvironmentId(nextActive.id)
   }
 
-  const updateActiveCollection = (
-    updater: (collection: CollectionItem) => CollectionItem,
-  ) => {
-    if (!activeCollection) {
+  const addCollection = (name: string) => {
+    const trimmed = name.trim()
+
+    if (!trimmed) {
       return
     }
 
-    setCollections((currentCollections) =>
-      currentCollections.map((collection) =>
-        collection.id === activeCollection.id ? updater(collection) : collection,
-      ),
-    )
-  }
-
-  const addCollection = () => {
     const nextCollection = createDefaultCollection(collections.length + 1)
 
     setCollections((currentCollections) => [
       ...currentCollections,
-      nextCollection,
+      { ...nextCollection, name: trimmed },
     ])
     setActiveCollectionId(nextCollection.id)
   }
@@ -451,6 +451,55 @@ function App() {
     setCollections(nextCollections)
     setActiveCollectionId(nextActive.id)
     clearCollectionLinks(activeCollection.id)
+  }
+
+  const deleteCollectionById = (collectionId: string) => {
+    if (collections.length === 1) {
+      const freshCollection = createDefaultCollection(1)
+      setCollections([freshCollection])
+      setActiveCollectionId(freshCollection.id)
+      clearCollectionLinks(collectionId)
+      return
+    }
+
+    const currentIndex = collections.findIndex(
+      (collection) => collection.id === collectionId,
+    )
+
+    if (currentIndex === -1) {
+      return
+    }
+
+    const nextCollections = collections.filter(
+      (collection) => collection.id !== collectionId,
+    )
+    const deletingActive = activeCollectionId === collectionId
+
+    setCollections(nextCollections)
+
+    if (deletingActive) {
+      const nextActive =
+        nextCollections[Math.max(currentIndex - 1, 0)] ?? nextCollections[0]
+      setActiveCollectionId(nextActive.id)
+    }
+
+    clearCollectionLinks(collectionId)
+  }
+
+  const renameCollectionById = (collectionId: string, name: string) => {
+    const trimmed = name.trim()
+
+    if (!trimmed) {
+      return
+    }
+
+    setCollections((currentCollections) =>
+      currentCollections.map((collection) =>
+        collection.id === collectionId
+          ? { ...collection, name: trimmed }
+          : collection,
+      ),
+    )
   }
 
   const saveActiveTabToCollection = () => {
@@ -854,16 +903,13 @@ function App() {
             <section className="panel">
               <CollectionsEditor
                 activeCollection={activeCollection}
-                activeTab={activeTab}
                 collections={collections}
-                onAdd={addCollection}
-                onChange={(collection) =>
-                  updateActiveCollection(() => collection)
-                }
+                onAddCollection={addCollection}
                 onDelete={deleteActiveCollection}
+                onDeleteCollection={deleteCollectionById}
                 onDeleteSavedRequest={deleteSavedRequest}
                 onOpenSavedRequest={openSavedRequest}
-                onSaveActiveTab={saveActiveTabToCollection}
+                onRenameCollection={renameCollectionById}
                 onSelect={setActiveCollectionId}
               />
             </section>
@@ -874,7 +920,7 @@ function App() {
               <EnvironmentEditor
                 activeEnvironment={activeEnvironment}
                 environments={environments}
-                onAdd={addEnvironment}
+                onAddEnvironment={addEnvironment}
                 onChange={(environment) =>
                   updateActiveEnvironment(() => environment)
                 }
@@ -1700,107 +1746,157 @@ function KeyValueEditor({
   )
 }
 
+type EnvironmentFormModalState =
+  | {
+      mode: 'create'
+      name: string
+      color: EnvironmentColor
+      openKey: number
+    }
+  | {
+      mode: 'edit'
+      name: string
+      color: EnvironmentColor
+      openKey: number
+    }
+
 type EnvironmentEditorProps = {
   environments: EnvironmentItem[]
   activeEnvironment: EnvironmentItem
-  onSelect: (environmentId: string) => void
-  onAdd: () => void
-  onDelete: () => void
+  onAddEnvironment: (name: string, color: EnvironmentColor) => void
   onChange: (environment: EnvironmentItem) => void
+  onDelete: () => void
+  onSelect: (environmentId: string) => void
 }
 
 function EnvironmentEditor({
   environments,
   activeEnvironment,
-  onSelect,
-  onAdd,
-  onDelete,
+  onAddEnvironment,
   onChange,
+  onDelete,
+  onSelect,
 }: EnvironmentEditorProps) {
-  const activeEnvironmentColorLabel = getEnvironmentColorLabel(
-    activeEnvironment.color,
-  )
+  const envModalOpenSeq = useRef(0)
+  const environmentModalNameInputRef = useRef<HTMLInputElement | null>(null)
+  const [environmentModal, setEnvironmentModal] =
+    useState<EnvironmentFormModalState | null>(null)
+
+  const environmentModalFocusKey =
+    environmentModal == null
+      ? null
+      : environmentModal.mode === 'create'
+        ? `env-c:${environmentModal.openKey}`
+        : `env-e:${activeEnvironment.id}:${environmentModal.openKey}`
+
+  useEffect(() => {
+    setEnvironmentModal((current) =>
+      current?.mode === 'edit' ? null : current,
+    )
+  }, [activeEnvironment.id])
+
+  useEffect(() => {
+    if (!environmentModal) {
+      return
+    }
+
+    const t = window.setTimeout(() => {
+      environmentModalNameInputRef.current?.focus()
+      environmentModalNameInputRef.current?.select()
+    }, 0)
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setEnvironmentModal(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.clearTimeout(t)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [environmentModalFocusKey])
 
   return (
     <div className="stack gap-sm">
-      <div className="section-heading">
-        <h2>Environments</h2>
-        <div className="field-actions">
-          <button className="ghost-button" type="button" onClick={onAdd}>
+      <div className="environments-block-heading">
+        <h2 className="environments-block-heading__title">Environments</h2>
+        <div className="environments-block-heading__actions">
+          <button
+            className="ghost-button ghost-button--compact"
+            type="button"
+            onClick={() => {
+              envModalOpenSeq.current += 1
+              const index = environments.length + 1
+
+              setEnvironmentModal({
+                mode: 'create',
+                name: index === 1 ? 'Default' : `Environment ${index}`,
+                color: 'branco',
+                openKey: envModalOpenSeq.current,
+              })
+            }}
+          >
             Novo
           </button>
-          <button className="danger-button" type="button" onClick={onDelete}>
-            Remover
+          <button
+            className="ghost-button ghost-button--compact"
+            type="button"
+            onClick={() => {
+              envModalOpenSeq.current += 1
+
+              setEnvironmentModal({
+                mode: 'edit',
+                name: activeEnvironment.name,
+                color: activeEnvironment.color,
+                openKey: envModalOpenSeq.current,
+              })
+            }}
+          >
+            Editar
+          </button>
+          <button
+            className="danger-button danger-button--compact"
+            type="button"
+            onClick={onDelete}
+          >
+            Excluir
           </button>
         </div>
       </div>
 
-      <label className="field">
+      <label className="field" htmlFor="environment-active-select">
         <span>Selecionado</span>
-        <select
-          value={activeEnvironment.id}
-          onChange={(event) => onSelect(event.target.value)}
-        >
-          {environments.map((environment) => (
-            <option key={environment.id} value={environment.id}>
-              {environment.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div className="field-grid">
-        <label className="field">
-          <span>Nome</span>
-          <input
-            type="text"
-            value={activeEnvironment.name}
-            onChange={(event) =>
-              onChange({
-                ...activeEnvironment,
-                name: event.target.value,
-              })
-            }
-          />
-        </label>
-
-        <label className="field">
-          <span>Cor do ambiente</span>
+        <div className="environments-selected-row">
           <select
-            className="environment-color-select"
-            style={{ color: ENVIRONMENT_COLOR_CSS[activeEnvironment.color] }}
-            value={activeEnvironment.color}
-            onChange={(event) =>
-              onChange({
-                ...activeEnvironment,
-                color: event.target.value as EnvironmentColor,
-              })
-            }
+            id="environment-active-select"
+            className="environments-selected-row__select"
+            value={activeEnvironment.id}
+            onChange={(event) => onSelect(event.target.value)}
           >
-            {ENVIRONMENT_COLOR_OPTIONS.map((option) => (
-              <option
-                key={option.value}
-                value={option.value}
-                className={`environment-color-text environment-color-text--${option.value}`}
-                style={{ color: ENVIRONMENT_COLOR_CSS[option.value] }}
-              >
-                {option.label}
+            {environments.map((environment) => (
+              <option key={environment.id} value={environment.id}>
+                {environment.name}
               </option>
             ))}
           </select>
-          <span className="field-preview">
-            Cor atual:{' '}
+          <span
+            className="environments-selected-row__color"
+            title={`Cor: ${getEnvironmentColorLabel(activeEnvironment.color)}`}
+          >
             <span
               className={`environment-color-text environment-color-text--${activeEnvironment.color}`}
             >
-              {activeEnvironmentColorLabel}
+              {getEnvironmentColorLabel(activeEnvironment.color)}
             </span>
           </span>
-        </label>
-      </div>
+        </div>
+      </label>
 
-      <p className="subtle helper-text">
-        Use variaveis com o formato <code>{'{{baseUrl}}'}</code> em URL, headers,
+      <p className="subtle helper-text environments-block-helper-text">
+        Use variaveis com o formato <code>{'{{variavel}}'}</code> em URL, headers,
         body e auth.
       </p>
 
@@ -1813,135 +1909,603 @@ function EnvironmentEditor({
           })
         }
       />
+
+      {environmentModal &&
+        createPortal(
+          <div
+            className="collections-rename-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setEnvironmentModal(null)
+              }
+            }}
+          >
+            <div
+              className="collections-rename-dialog"
+              role="dialog"
+              aria-labelledby="environment-modal-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <h3 id="environment-modal-title">
+                {environmentModal.mode === 'create'
+                  ? 'Novo environment'
+                  : 'Editar environment'}
+              </h3>
+              <label className="field">
+                <span>Nome</span>
+                <input
+                  ref={environmentModalNameInputRef}
+                  type="text"
+                  value={environmentModal.name}
+                  onChange={(event) =>
+                    setEnvironmentModal((current) =>
+                      current
+                        ? { ...current, name: event.target.value }
+                        : current,
+                    )
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') {
+                      return
+                    }
+
+                    event.preventDefault()
+                    const trimmed = environmentModal.name.trim()
+
+                    if (!trimmed) {
+                      return
+                    }
+
+                    if (environmentModal.mode === 'create') {
+                      onAddEnvironment(trimmed, environmentModal.color)
+                    } else {
+                      onChange({
+                        ...activeEnvironment,
+                        name: trimmed,
+                        color: environmentModal.color,
+                      })
+                    }
+
+                    setEnvironmentModal(null)
+                  }}
+                />
+              </label>
+              <label className="field">
+                <span>Cor do ambiente</span>
+                <select
+                  className="environment-color-select"
+                  style={{
+                    color: ENVIRONMENT_COLOR_CSS[environmentModal.color],
+                  }}
+                  value={environmentModal.color}
+                  onChange={(event) =>
+                    setEnvironmentModal((current) =>
+                      current
+                        ? {
+                            ...current,
+                            color: event.target.value as EnvironmentColor,
+                          }
+                        : current,
+                    )
+                  }
+                >
+                  {ENVIRONMENT_COLOR_OPTIONS.map((option) => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                      className={`environment-color-text environment-color-text--${option.value}`}
+                      style={{ color: ENVIRONMENT_COLOR_CSS[option.value] }}
+                    >
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="field-preview">
+                  Cor selecionada:{' '}
+                  <span
+                    className={`environment-color-text environment-color-text--${environmentModal.color}`}
+                  >
+                    {getEnvironmentColorLabel(environmentModal.color)}
+                  </span>
+                </span>
+              </label>
+              <div className="collections-rename-dialog__actions">
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => setEnvironmentModal(null)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={!environmentModal.name.trim()}
+                  onClick={() => {
+                    const trimmed = environmentModal.name.trim()
+
+                    if (!trimmed) {
+                      return
+                    }
+
+                    if (environmentModal.mode === 'create') {
+                      onAddEnvironment(trimmed, environmentModal.color)
+                    } else {
+                      onChange({
+                        ...activeEnvironment,
+                        name: trimmed,
+                        color: environmentModal.color,
+                      })
+                    }
+
+                    setEnvironmentModal(null)
+                  }}
+                >
+                  Salvar
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
 
+type CollectionNameModalState =
+  | {
+      mode: 'rename'
+      collectionId: string
+      name: string
+    }
+  | {
+      mode: 'create'
+      name: string
+      openKey: number
+    }
+
 type CollectionsEditorProps = {
   collections: CollectionItem[]
   activeCollection: CollectionItem
-  activeTab?: RequestTab
-  onSelect: (collectionId: string) => void
-  onAdd: () => void
+  onAddCollection: (name: string) => void
   onDelete: () => void
-  onSaveActiveTab: () => void
+  onDeleteCollection: (collectionId: string) => void
+  onRenameCollection: (collectionId: string, name: string) => void
   onOpenSavedRequest: (collectionId: string, savedRequest: SavedRequestItem) => void
   onDeleteSavedRequest: (collectionId: string, savedRequestId: string) => void
-  onChange: (collection: CollectionItem) => void
+  onSelect: (collectionId: string) => void
 }
 
 function CollectionsEditor({
   collections,
   activeCollection,
-  activeTab,
   onSelect,
-  onAdd,
+  onAddCollection,
   onDelete,
-  onSaveActiveTab,
+  onDeleteCollection,
+  onRenameCollection,
   onOpenSavedRequest,
   onDeleteSavedRequest,
-  onChange,
 }: CollectionsEditorProps) {
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const renameInputRef = useRef<HTMLInputElement | null>(null)
+  const newCollectionOpenSeq = useRef(0)
+  const [contextMenu, setContextMenu] = useState<{
+    collectionId: string
+    clientX: number
+    clientY: number
+  } | null>(null)
+  const [sublistExpanded, setSublistExpanded] = useState(true)
+  const [nameModal, setNameModal] = useState<CollectionNameModalState | null>(
+    null,
+  )
+
+  useEffect(() => {
+    setSublistExpanded(true)
+  }, [activeCollection.id])
+
+  const nameModalFocusKey =
+    nameModal == null
+      ? null
+      : nameModal.mode === 'rename'
+        ? `r:${nameModal.collectionId}`
+        : `c:${nameModal.openKey}`
+
+  useEffect(() => {
+    if (!nameModal) {
+      return
+    }
+
+    const t = window.setTimeout(() => {
+      renameInputRef.current?.focus()
+      renameInputRef.current?.select()
+    }, 0)
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setNameModal(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.clearTimeout(t)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [nameModalFocusKey])
+
+  useEffect(() => {
+    if (!contextMenu) {
+      return
+    }
+
+    const handlePointerDown = (event: Event) => {
+      const target = event.target as Node | null
+
+      if (menuRef.current && target && !menuRef.current.contains(target)) {
+        setContextMenu(null)
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setContextMenu(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('touchstart', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('touchstart', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [contextMenu])
+
+  const openContextMenu = (event: MouseEvent, collectionId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setContextMenu({
+      collectionId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    })
+  }
+
+  const contextCollection = contextMenu
+    ? collections.find((c) => c.id === contextMenu.collectionId)
+    : undefined
+
+  const menuLeft = contextMenu
+    ? Math.max(
+        8,
+        Math.min(
+          contextMenu.clientX,
+          typeof window !== 'undefined'
+            ? window.innerWidth - 172
+            : contextMenu.clientX,
+        ),
+      )
+    : 0
+
+  const menuTop = contextMenu
+    ? Math.max(
+        8,
+        Math.min(
+          contextMenu.clientY,
+          typeof window !== 'undefined'
+            ? window.innerHeight - 88
+            : contextMenu.clientY,
+        ),
+      )
+    : 0
+
   return (
     <div className="stack gap-sm">
-      <div className="section-heading">
-        <h2>Collections</h2>
-        <div className="field-actions">
-          <button className="ghost-button" type="button" onClick={onAdd}>
+      <div className="collections-block-heading">
+        <h2 className="collections-block-heading__title">Collections</h2>
+        <div className="collections-block-heading__actions">
+          <button
+            className="ghost-button ghost-button--compact"
+            type="button"
+            onClick={() => {
+              newCollectionOpenSeq.current += 1
+              const index = collections.length + 1
+
+              setNameModal({
+                mode: 'create',
+                name:
+                  index === 1 ? 'Minha Collection' : `Collection ${index}`,
+                openKey: newCollectionOpenSeq.current,
+              })
+            }}
+          >
             Nova
           </button>
-          <button className="danger-button" type="button" onClick={onDelete}>
-            Remover
+          <button
+            className="ghost-button ghost-button--compact"
+            type="button"
+            onClick={() => {
+              setNameModal({
+                mode: 'rename',
+                collectionId: activeCollection.id,
+                name: activeCollection.name,
+              })
+            }}
+          >
+            Renomear
+          </button>
+          <button
+            className="danger-button danger-button--compact"
+            type="button"
+            onClick={onDelete}
+          >
+            Excluir
           </button>
         </div>
       </div>
 
-      <label className="field">
-        <span>Collection ativa</span>
-        <select
-          value={activeCollection.id}
-          onChange={(event) => onSelect(event.target.value)}
-        >
-          {collections.map((collection) => (
-            <option key={collection.id} value={collection.id}>
-              {collection.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <nav
+        className="collections-folder-list"
+        aria-label="Lista de collections e requests salvas"
+      >
+        {collections.map((collection) => {
+          const isActive = collection.id === activeCollection.id
 
-      <label className="field">
-        <span>Nome da collection</span>
-        <input
-          type="text"
-          value={activeCollection.name}
-          onChange={(event) =>
-            onChange({
-              ...activeCollection,
-              name: event.target.value,
-            })
-          }
-        />
-      </label>
-
-      <div className="collection-summary">
-        <span className="info-pill">
-          {activeCollection.requests.length} request
-          {activeCollection.requests.length === 1 ? '' : 's'} salva
-          {activeCollection.requests.length === 1 ? '' : 's'}
-        </span>
-        {activeTab && (
-          <button className="ghost-button" type="button" onClick={onSaveActiveTab}>
-            {activeTab.savedRequestId &&
-            activeTab.collectionId === activeCollection.id
-              ? 'Atualizar atual'
-              : 'Salvar aba atual'}
-          </button>
-        )}
-      </div>
-
-      <div className="saved-requests-list">
-        {activeCollection.requests.length === 0 ? (
-          <div className="empty-card compact-card">
-            Salve a aba atual para criar a primeira request da collection.
-          </div>
-        ) : (
-          activeCollection.requests.map((savedRequest) => (
-            <div className="saved-request-card" key={savedRequest.id}>
+          return (
+            <div key={collection.id} className="collections-folder-branch">
               <button
-                className="saved-request-card__content"
                 type="button"
-                onClick={() => onOpenSavedRequest(activeCollection.id, savedRequest)}
+                className={`collections-folder-item ${
+                  isActive ? 'is-active' : ''
+                }`}
+                aria-expanded={isActive ? sublistExpanded : false}
+                onClick={() => {
+                  if (collection.id === activeCollection.id) {
+                    setSublistExpanded((open) => !open)
+                  } else {
+                    onSelect(collection.id)
+                  }
+                }}
+                onContextMenu={(event) => openContextMenu(event, collection.id)}
               >
-                <div className="history-item__top">
-                  <span
-                    className={`method-chip method-chip--${savedRequest.request.method.toLowerCase()}`}
-                  >
-                    {savedRequest.request.method}
-                  </span>
-                  <span className="subtle saved-request-date">
-                    {formatDate(savedRequest.updatedAt)}
-                  </span>
-                </div>
-                <strong>{savedRequest.name}</strong>
-                <span className="saved-request-url" title={savedRequest.request.url}>
-                  {savedRequest.request.url || 'URL vazia'}
+                <span className="collections-folder-item__label">
+                  {collection.name}
                 </span>
+                {collection.requests.length > 0 && (
+                  <span className="collections-folder-item__count subtle">
+                    {collection.requests.length}
+                  </span>
+                )}
               </button>
 
-              <button
-                className="danger-button"
-                type="button"
-                onClick={() =>
-                  onDeleteSavedRequest(activeCollection.id, savedRequest.id)
-                }
+              <div
+                className={`collections-folder-sublist-wrap${
+                  isActive && sublistExpanded
+                    ? ' collections-folder-sublist-wrap--open'
+                    : ''
+                }`}
+                aria-hidden={!isActive || !sublistExpanded}
               >
-                Excluir
-              </button>
+                <div className="collections-folder-sublist-inner">
+                  {isActive && (
+                    <div
+                      className="collections-folder-sublist"
+                      role="group"
+                      aria-label={`Requests salvas em ${collection.name}`}
+                    >
+                      {collection.requests.length === 0 ? (
+                        <p className="collections-folder-sublist__empty subtle">
+                          Nenhuma request salva nesta collection.
+                        </p>
+                      ) : (
+                        collection.requests.map((savedRequest, requestIndex) => (
+                          <div
+                            className="saved-request-card saved-request-card--nested"
+                            key={savedRequest.id}
+                            style={
+                              {
+                                '--saved-card-delay': `${requestIndex * 48}ms`,
+                              } as CSSProperties
+                            }
+                          >
+                            <button
+                              className="saved-request-card__content"
+                              type="button"
+                              title={
+                                savedRequest.request.url
+                                  ? `${savedRequest.name} — ${savedRequest.request.url}`
+                                  : savedRequest.name
+                              }
+                              onClick={() =>
+                                onOpenSavedRequest(collection.id, savedRequest)
+                              }
+                            >
+                              <div className="saved-request-card__row-head">
+                                <span
+                                  className={`method-chip method-chip--nested method-chip--${savedRequest.request.method.toLowerCase()}`}
+                                >
+                                  {savedRequest.request.method}
+                                </span>
+                                <strong className="saved-request-card__name">
+                                  {savedRequest.name}
+                                </strong>
+                              </div>
+                              <div className="saved-request-card__meta">
+                                <span className="saved-request-card__date-label">
+                                  Modificada em
+                                </span>
+                                <span className="saved-request-card__date-value">
+                                  {formatSavedListDate(savedRequest.updatedAt)}
+                                </span>
+                              </div>
+                            </button>
+
+                            <button
+                              className="danger-button danger-button--nested"
+                              type="button"
+                              onClick={() =>
+                                onDeleteSavedRequest(
+                                  collection.id,
+                                  savedRequest.id,
+                                )
+                              }
+                            >
+                              Excluir
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          ))
+          )
+        })}
+      </nav>
+
+      {contextMenu &&
+        contextCollection &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="collections-context-menu"
+            role="menu"
+            style={{ left: menuLeft, top: menuTop }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              className="collections-context-menu__item"
+              role="menuitem"
+              type="button"
+              onClick={() => {
+                setNameModal({
+                  mode: 'rename',
+                  collectionId: contextMenu.collectionId,
+                  name: contextCollection.name,
+                })
+                setContextMenu(null)
+              }}
+            >
+              Renomear
+            </button>
+            <button
+              className="collections-context-menu__item collections-context-menu__item--danger"
+              role="menuitem"
+              type="button"
+              onClick={() => {
+                const ok = window.confirm(
+                  `Excluir a collection "${contextCollection.name}"? As requests salvas nesta collection serao removidas.`,
+                )
+
+                if (ok) {
+                  onDeleteCollection(contextMenu.collectionId)
+                }
+
+                setContextMenu(null)
+              }}
+            >
+              Excluir collection
+            </button>
+          </div>,
+          document.body,
         )}
-      </div>
+
+      {nameModal &&
+        createPortal(
+          <div
+            className="collections-rename-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setNameModal(null)
+              }
+            }}
+          >
+            <div
+              className="collections-rename-dialog"
+              role="dialog"
+              aria-labelledby="collections-name-modal-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <h3 id="collections-name-modal-title">
+                {nameModal.mode === 'rename'
+                  ? 'Renomear collection'
+                  : 'Nova collection'}
+              </h3>
+              <label className="field">
+                <span>Nome</span>
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  value={nameModal.name}
+                  onChange={(event) =>
+                    setNameModal((current) =>
+                      current ? { ...current, name: event.target.value } : current,
+                    )
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') {
+                      return
+                    }
+
+                    event.preventDefault()
+                    const trimmed = nameModal.name.trim()
+
+                    if (!trimmed) {
+                      return
+                    }
+
+                    if (nameModal.mode === 'rename') {
+                      onRenameCollection(nameModal.collectionId, trimmed)
+                    } else {
+                      onAddCollection(trimmed)
+                    }
+
+                    setNameModal(null)
+                  }}
+                />
+              </label>
+              <div className="collections-rename-dialog__actions">
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => setNameModal(null)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={!nameModal.name.trim()}
+                  onClick={() => {
+                    const trimmed = nameModal.name.trim()
+
+                    if (!trimmed) {
+                      return
+                    }
+
+                    if (nameModal.mode === 'rename') {
+                      onRenameCollection(nameModal.collectionId, trimmed)
+                    } else {
+                      onAddCollection(trimmed)
+                    }
+
+                    setNameModal(null)
+                  }}
+                >
+                  Salvar
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
@@ -2054,19 +2618,15 @@ function EnvironmentVariablesEditor({
   return (
     <div className="stack gap-sm">
       <div className="section-heading">
-        <div>
-          <h2>Variaveis</h2>
-          <p className="subtle helper-text">
-            Defina valores reutilizaveis para trocar de ambiente sem editar a
-            request inteira.
-          </p>
-        </div>
+        <h2>Variaveis</h2>
         <button
-          className="ghost-button"
+          className="ghost-button ghost-button--compact"
           type="button"
+          title="Adicionar variavel"
+          aria-label="Adicionar variavel"
           onClick={() => onChange([...rows, createRow()])}
         >
-          Adicionar variavel
+          +
         </button>
       </div>
 
@@ -2077,36 +2637,6 @@ function EnvironmentVariablesEditor({
 
           return (
             <div className="environment-variable-card" key={row.id}>
-              <div className="environment-variable-card__header">
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={row.enabled}
-                    onChange={(event) =>
-                      onChange(
-                        rows.map((current) =>
-                          current.id === row.id
-                            ? { ...current, enabled: event.target.checked }
-                            : current,
-                        ),
-                      )
-                    }
-                  />
-                  <span>{row.enabled ? 'Variavel ativa' : 'Variavel inativa'}</span>
-                </label>
-
-                <button
-                  className="danger-button"
-                  type="button"
-                  onClick={() => {
-                    const nextRows = rows.filter((current) => current.id !== row.id)
-                    onChange(nextRows.length === 0 ? [createRow()] : nextRows)
-                  }}
-                >
-                  Remover
-                </button>
-              </div>
-
               <div className="environment-variable-card__fields">
                 <label className="field">
                   <span>Nome da variavel</span>
@@ -2147,11 +2677,43 @@ function EnvironmentVariablesEditor({
                     }
                   />
                 </label>
-              </div>
 
-              <p className="subtle helper-text">
-                Uso na request: <code>{`{{${previewName}}}`}</code>
-              </p>
+                <p className="subtle helper-text environment-variable-card__usage">
+                  Uso na request: <code>{`{{${previewName}}}`}</code>
+                </p>
+
+                <div className="environment-variable-card__footer">
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={row.enabled}
+                      onChange={(event) =>
+                        onChange(
+                          rows.map((current) =>
+                            current.id === row.id
+                              ? { ...current, enabled: event.target.checked }
+                              : current,
+                          ),
+                        )
+                      }
+                    />
+                    <span>
+                      {row.enabled ? 'Variavel ativa' : 'Variavel inativa'}
+                    </span>
+                  </label>
+
+                  <button
+                    className="danger-button danger-button--compact"
+                    type="button"
+                    onClick={() => {
+                      const nextRows = rows.filter((current) => current.id !== row.id)
+                      onChange(nextRows.length === 0 ? [createRow()] : nextRows)
+                    }}
+                  >
+                    Excluir
+                  </button>
+                </div>
+              </div>
             </div>
           )
         })}
@@ -2360,6 +2922,16 @@ function formatDate(value: string) {
     minute: '2-digit',
     day: '2-digit',
     month: '2-digit',
+  }).format(new Date(value))
+}
+
+function formatSavedListDate(value: string) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(new Date(value))
 }
 
