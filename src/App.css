@@ -23,6 +23,33 @@
   padding: 24px;
 }
 
+.app-header__brand-lockup {
+  display: inline;
+}
+
+.app-header__request-beta {
+  display: inline;
+  white-space: nowrap;
+}
+
+/* Beta estilo marca (ao lado do fim de "Request"); cor/peso como .eyebrow + .eyebrow--natural */
+.app-header__beta-mark.eyebrow.eyebrow--natural {
+  font-size: 0.28em;
+  line-height: 0;
+  margin: 0 0 0 0.32em;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  text-transform: none;
+  vertical-align: super;
+  position: relative;
+  top: -0.15em;
+}
+
+.app-header__main-title {
+  min-width: 0;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   font-size: 13px;
@@ -30,6 +57,11 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent);
+}
+
+.eyebrow--natural {
+  text-transform: none;
+  letter-spacing: 0.06em;
 }
 
 .subtle {
@@ -168,6 +200,32 @@
   padding: 20px;
 }
 
+/* Contorno externo: cor do environment ativo (request + teste de carga). */
+.request-panel.request-panel--env-verde,
+.load-test-panel.load-test-panel--env-verde {
+  border-color: rgba(34, 197, 94, 0.72);
+}
+
+.request-panel.request-panel--env-vermelho,
+.load-test-panel.load-test-panel--env-vermelho {
+  border-color: rgba(239, 68, 68, 0.72);
+}
+
+.request-panel.request-panel--env-amarelo,
+.load-test-panel.load-test-panel--env-amarelo {
+  border-color: rgba(250, 204, 21, 0.78);
+}
+
+.request-panel.request-panel--env-branco,
+.load-test-panel.load-test-panel--env-branco {
+  border-color: rgba(248, 250, 252, 0.55);
+}
+
+.request-panel.request-panel--env-lilas,
+.load-test-panel.load-test-panel--env-lilas {
+  border-color: rgba(192, 132, 252, 0.75);
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
@@ -202,6 +260,12 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.request-panel .request-config-panel.request-config-panel--body-active {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
 }
 
 .request-panel .request-config-panel {

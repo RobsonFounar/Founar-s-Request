@@ -68,6 +68,14 @@ const ENVIRONMENT_COLOR_OPTIONS: Array<{
   { value: 'lilas', label: 'Lilas' },
 ]
 
+const ENVIRONMENT_COLOR_CSS: Record<EnvironmentColor, string> = {
+  verde: '#22c55e',
+  vermelho: '#ef4444',
+  amarelo: '#facc15',
+  branco: '#f8fafc',
+  lilas: '#c084fc',
+}
+
 function BrandFounar() {
   return (
     <>
@@ -821,13 +829,21 @@ function App() {
     <div className="app-shell">
       <header className="app-header">
         <div>
-          <p className="eyebrow">
-            <BrandFounarRequest /> · Beta
-          </p>
-          <h1>Cliente de APIs com requests, collections e testes</h1>
+          <h1 className="app-header__main-title">
+            <span className="app-header__brand-lockup">
+              <BrandFounar />
+              {' '}
+              <span className="app-header__request-beta">
+                <BrandRequest />
+                <sup className="eyebrow eyebrow--natural app-header__beta-mark">
+                  Beta
+                </sup>
+              </span>
+            </span>
+          </h1>
           <p className="subtle">
-            Primeira base do <BrandFounarRequest /> para enviar requests HTTP, organizar
-            fluxos e validar APIs em um unico lugar.
+            <BrandFounarRequest /> para enviar requests HTTP, organizar fluxos e validar APIs
+            em um unico lugar.
           </p>
         </div>
       </header>
@@ -964,7 +980,9 @@ function App() {
 
           {activeTab && (
             <>
-              <section className="panel request-panel">
+              <section
+                className={`panel request-panel request-panel--env-${activeEnvironment?.color ?? 'branco'}`}
+              >
                 <div className="request-name-row">
                   <label
                     className="request-name-row__label"
@@ -1023,7 +1041,13 @@ function App() {
                   </p>
                 )}
 
-                <div className="request-config-panel">
+                <div
+                  className={`request-config-panel ${
+                    requestConfigTabId === 'body'
+                      ? 'request-config-panel--body-active'
+                      : ''
+                  }`}
+                >
                   <div
                     className="request-config-tabs"
                     role="tablist"
@@ -1224,7 +1248,9 @@ function App() {
 
               <div className="content-grid content-grid--response-only">
                 <div className="stack">
-                  <section className="panel">
+                  <section
+                    className={`panel load-test-panel load-test-panel--env-${activeEnvironment?.color ?? 'branco'}`}
+                  >
                     <LoadTestEditor
                       config={loadTestConfig}
                       feedback={loadTestFeedback}
@@ -1741,7 +1767,8 @@ function EnvironmentEditor({
         <label className="field">
           <span>Cor do ambiente</span>
           <select
-            className={`environment-color-select environment-color-text--${activeEnvironment.color}`}
+            className="environment-color-select"
+            style={{ color: ENVIRONMENT_COLOR_CSS[activeEnvironment.color] }}
             value={activeEnvironment.color}
             onChange={(event) =>
               onChange({
@@ -1751,7 +1778,12 @@ function EnvironmentEditor({
             }
           >
             {ENVIRONMENT_COLOR_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
+              <option
+                key={option.value}
+                value={option.value}
+                className={`environment-color-text environment-color-text--${option.value}`}
+                style={{ color: ENVIRONMENT_COLOR_CSS[option.value] }}
+              >
                 {option.label}
               </option>
             ))}

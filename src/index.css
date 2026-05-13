@@ -9,6 +9,7 @@
   --accent: #4f46e5;
   --accent-bg: rgba(79, 70, 229, 0.16);
   --accent-border: rgba(129, 140, 248, 0.6);
+  --brand-mark: #a855f7;
   --sans: Inter, 'Segoe UI', Roboto, sans-serif;
   --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   color-scheme: dark;
@@ -72,4 +73,9 @@ select,
 textarea,
 pre {
   font-family: inherit;
+}
+
+.brand-initial {
+  font-weight: 800;
+  color: var(--brand-mark);
 }
