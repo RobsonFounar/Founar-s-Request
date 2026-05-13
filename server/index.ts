@@ -31,11 +31,27 @@ type ExecuteRequestInput = {
   body: RequestBody
 }
 
+type LoadTestMode = 'count' | 'duration'
+
 type LoadTestInput = {
   request: ExecuteRequestInput
-  totalRequests: number
+  mode?: LoadTestMode
+  totalRequests?: number
+  durationSeconds?: number
   concurrency: number
 }
+
+type LoadTestSample = {
+  index: number
+  elapsedMs: number
+  durationMs: number
+  ok: boolean
+  status: number
+  error?: string
+}
+
+const LOAD_TEST_MIN_DURATION_SECONDS = 1
+const LOAD_TEST_MAX_DURATION_SECONDS = 600
 
 type ExecutionResult = {
   ok: boolean
@@ -75,8 +91,8 @@ app.post('/api/requests/execute', async (req, res) => {
 
 app.post('/api/load-tests/run', async (req, res) => {
   const input = req.body as LoadTestInput
-  const totalRequests = Number(input?.totalRequests)
   const concurrency = Number(input?.concurrency)
+  const mode: LoadTestMode = input.mode === 'duration' ? 'duration' : 'count'
 
   if (!input?.request?.url) {
     res.status(400).json({
@@ -85,90 +101,158 @@ app.post('/api/load-tests/run', async (req, res) => {
     return
   }
 
-  if (!Number.isInteger(totalRequests) || totalRequests < 1 || totalRequests > 1000) {
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 50) {
     res.status(400).json({
-      error: 'Defina uma quantidade entre 1 e 1000 requests.',
+      error: 'Defina uma concorrência entre 1 e 50.',
     })
     return
   }
 
-  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 50) {
-    res.status(400).json({
-      error: 'Defina uma concorrencia entre 1 e 50.',
-    })
-    return
+  let totalRequests = 0
+  let durationSeconds = 0
+
+  if (mode === 'count') {
+    totalRequests = Number(input?.totalRequests)
+
+    if (!Number.isInteger(totalRequests) || totalRequests < 1 || totalRequests > 1000) {
+      res.status(400).json({
+        error: 'Defina uma quantidade entre 1 e 1000 requests.',
+      })
+      return
+    }
+  } else {
+    durationSeconds = Number(input?.durationSeconds)
+
+    if (
+      !Number.isInteger(durationSeconds) ||
+      durationSeconds < LOAD_TEST_MIN_DURATION_SECONDS ||
+      durationSeconds > LOAD_TEST_MAX_DURATION_SECONDS
+    ) {
+      res.status(400).json({
+        error: `Defina uma duração entre ${LOAD_TEST_MIN_DURATION_SECONDS} e ${LOAD_TEST_MAX_DURATION_SECONDS} segundos.`,
+      })
+      return
+    }
   }
+
+  let aborted = false
+  const onResponseClosed = () => {
+    if (!res.writableEnded) {
+      aborted = true
+    }
+  }
+
+  res.once('close', onResponseClosed)
 
   const startedAt = new Date().toISOString()
   const suiteStartedAt = Date.now()
   let nextRequestIndex = 0
-  const outcomes: Array<{
-    durationMs: number
-    ok: boolean
-    status: number
-    error?: string
-  }> = []
+  const samples: LoadTestSample[] = []
 
-  const workerCount = Math.min(concurrency, totalRequests)
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (nextRequestIndex < totalRequests) {
-      const currentIndex = nextRequestIndex
-      nextRequestIndex += 1
+  try {
+    if (mode === 'count') {
+      const workerCount = Math.min(concurrency, totalRequests)
+      const workers = Array.from({ length: workerCount }, async () => {
+        while (!aborted) {
+          const currentIndex = nextRequestIndex
+          nextRequestIndex += 1
 
-      if (currentIndex >= totalRequests) {
-        break
-      }
+          if (currentIndex >= totalRequests) {
+            break
+          }
 
-      const result = await executeHttpRequest(input.request)
+          const requestStartedAt = Date.now()
+          const result = await executeHttpRequest(input.request)
 
-      outcomes.push({
-        durationMs: result.durationMs,
-        ok: result.ok,
-        status: result.status,
-        error: result.error,
+          samples.push({
+            index: currentIndex,
+            elapsedMs: requestStartedAt - suiteStartedAt,
+            durationMs: result.durationMs,
+            ok: result.ok && !result.error,
+            status: result.status,
+            error: result.error,
+          })
+        }
       })
-    }
-  })
 
-  await Promise.all(workers)
+      await Promise.all(workers)
+    } else {
+      const durationMs = durationSeconds * 1000
+      const workerCount = Math.min(concurrency, 50)
+      const workers = Array.from({ length: workerCount }, async () => {
+        while (!aborted && Date.now() - suiteStartedAt < durationMs) {
+          const currentIndex = nextRequestIndex
+          nextRequestIndex += 1
+          const requestStartedAt = Date.now()
+          const result = await executeHttpRequest(input.request)
+
+          samples.push({
+            index: currentIndex,
+            elapsedMs: requestStartedAt - suiteStartedAt,
+            durationMs: result.durationMs,
+            ok: result.ok && !result.error,
+            status: result.status,
+            error: result.error,
+          })
+        }
+      })
+
+      await Promise.all(workers)
+    }
+  } finally {
+    res.off('close', onResponseClosed)
+  }
+
+  samples.sort((a, b) => a.index - b.index)
 
   const totalDurationMs = Date.now() - suiteStartedAt
-  const latencies = outcomes.map((outcome) => outcome.durationMs).sort((a, b) => a - b)
-  const successfulRequests = outcomes.filter((outcome) => outcome.ok).length
-  const failedRequests = outcomes.length - successfulRequests
+  const latencies = samples.map((sample) => sample.durationMs).sort((a, b) => a - b)
+  const successfulRequests = samples.filter((sample) => sample.ok).length
+  const failedRequests = samples.length - successfulRequests
   const avgLatencyMs =
     latencies.length > 0
       ? latencies.reduce((sum, current) => sum + current, 0) / latencies.length
       : 0
-  const statusCounts = [...countByStatus(outcomes).entries()].map(([label, count]) => ({
+  const statusCounts = [...countByStatus(samples).entries()].map(([label, count]) => ({
     label,
     count,
   }))
   const errorSamples = [
     ...new Set(
-      outcomes
-        .map((outcome) => outcome.error)
+      samples
+        .map((sample) => sample.error)
         .filter((error): error is string => Boolean(error)),
     ),
   ].slice(0, 5)
 
-  res.json({
-    startedAt,
-    totalRequests,
-    concurrency,
-    successfulRequests,
-    failedRequests,
-    totalDurationMs,
-    requestsPerSecond:
-      totalDurationMs > 0 ? Number((outcomes.length / (totalDurationMs / 1000)).toFixed(2)) : 0,
-    minLatencyMs: latencies[0] ?? 0,
-    avgLatencyMs: Number(avgLatencyMs.toFixed(2)),
-    maxLatencyMs: latencies[latencies.length - 1] ?? 0,
-    p50LatencyMs: percentile(latencies, 0.5),
-    p95LatencyMs: percentile(latencies, 0.95),
-    statusCounts,
-    errorSamples,
-  })
+  try {
+    if (!res.headersSent) {
+      res.json({
+        mode,
+        startedAt,
+        totalRequests: samples.length,
+        concurrency,
+        durationSeconds: mode === 'duration' ? durationSeconds : undefined,
+        successfulRequests,
+        failedRequests,
+        totalDurationMs,
+        requestsPerSecond:
+          totalDurationMs > 0
+            ? Number((samples.length / (totalDurationMs / 1000)).toFixed(2))
+            : 0,
+        minLatencyMs: latencies[0] ?? 0,
+        avgLatencyMs: Number(avgLatencyMs.toFixed(2)),
+        maxLatencyMs: latencies[latencies.length - 1] ?? 0,
+        p50LatencyMs: percentile(latencies, 0.5),
+        p95LatencyMs: percentile(latencies, 0.95),
+        statusCounts,
+        errorSamples,
+        samples,
+      })
+    }
+  } catch {
+    /* Cliente desconectou antes de receber o corpo (ex.: cancelar o fetch). */
+  }
 })
 
 if (existsSync(distDir)) {

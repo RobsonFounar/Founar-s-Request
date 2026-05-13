@@ -535,6 +535,219 @@
   gap: 10px;
 }
 
+.load-test-mode-toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  gap: 4px;
+}
+
+.load-test-mode-toggle__option {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.load-test-mode-toggle__icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: currentColor;
+  opacity: 0.85;
+}
+
+.load-test-mode-toggle__option.is-active .load-test-mode-toggle__icon {
+  opacity: 1;
+}
+
+.load-test-mode-toggle__option:hover:not(:disabled) {
+  color: var(--text-h);
+}
+
+.load-test-mode-toggle__option.is-active {
+  background: var(--accent-bg);
+  color: var(--text-h);
+  border: 1px solid var(--accent-border);
+}
+
+.load-test-mode-toggle__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.load-test-live {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 14px;
+  background: var(--accent-bg);
+}
+
+.load-test-live__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.load-test-live__header strong {
+  color: var(--text-h);
+}
+
+.load-test-live__hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.load-test-progress {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.load-test-progress__fill {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    var(--load-test-success, #4ade80),
+    var(--accent-strong, #60a5fa)
+  );
+  transition: width 0.2s ease;
+}
+
+.load-test-live__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.load-test-live__stats strong {
+  color: var(--text-h);
+  margin-right: 4px;
+}
+
+.load-test-live__stats-success strong {
+  color: var(--load-test-success, #4ade80);
+}
+
+.load-test-live__stats-failure strong {
+  color: var(--load-test-failure, #f87171);
+}
+
+.load-test-charts {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.load-test-chart-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.load-test-chart-card h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text-h);
+}
+
+.load-test-chart-card--wide {
+  min-width: 0;
+}
+
+.load-test-donut {
+  width: 100%;
+  max-width: 180px;
+  height: auto;
+  align-self: center;
+}
+
+.load-test-donut__value {
+  fill: var(--text-h);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.load-test-donut__caption {
+  fill: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.load-test-chart-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.load-test-chart-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.load-test-chart-legend__item strong {
+  color: var(--text-h);
+  margin-left: auto;
+}
+
+.load-test-chart-legend__swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--load-test-success, #4ade80);
+}
+
+.load-test-chart-legend__item--failure .load-test-chart-legend__swatch {
+  background: var(--load-test-failure, #f87171);
+}
+
+.load-test-throughput {
+  width: 100%;
+  height: auto;
+}
+
+.load-test-throughput__axis {
+  fill: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 720px) {
+  .load-test-charts {
+    grid-template-columns: 1fr;
+  }
+}
+
 .metric-card,
 .metric-inline,
 .status-count-chip {

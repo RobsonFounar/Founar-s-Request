@@ -7,7 +7,10 @@ import {
   resolveRequestInput,
 } from './lib/environments'
 import { importCurl, importOpenApi } from './lib/importers'
-import { executeRequest, runLoadTest } from './lib/requestRunner'
+import {
+  executeRequest,
+  runLoadTest,
+} from './lib/requestRunner'
 import type {
   AuthConfig,
   CollectionItem,
@@ -18,7 +21,9 @@ import type {
   HttpMethod,
   KeyValueRow,
   LoadTestConfig,
+  LoadTestMode,
   LoadTestResult,
+  LoadTestSample,
   RequestBody,
   RequestResponse,
   RequestTab,
@@ -56,9 +61,13 @@ const ENVIRONMENTS_STORAGE_KEY = 'runner.environments'
 const ACTIVE_ENVIRONMENT_STORAGE_KEY = 'runner.activeEnvironmentId'
 const HISTORY_LIMIT = 20
 const DEFAULT_LOAD_TEST_CONFIG: LoadTestConfig = {
+  mode: 'duration',
   totalRequests: 20,
+  durationSeconds: 30,
   concurrency: 5,
 }
+const LOAD_TEST_MIN_DURATION_SECONDS = 1
+const LOAD_TEST_MAX_DURATION_SECONDS = 600
 const ENVIRONMENT_COLOR_OPTIONS: Array<{
   value: EnvironmentColor
   label: string
@@ -224,6 +233,9 @@ function App() {
   const [loadTestResult, setLoadTestResult] = useState<LoadTestResult | null>(null)
   const [loadTestFeedback, setLoadTestFeedback] = useState<string | null>(null)
   const [isRunningLoadTest, setIsRunningLoadTest] = useState(false)
+  const [loadTestStartedAt, setLoadTestStartedAt] = useState<number | null>(null)
+  const [loadTestNow, setLoadTestNow] = useState<number>(0)
+  const loadTestAbortRef = useRef<AbortController | null>(null)
   const [environments, setEnvironments] = useState<EnvironmentItem[]>(() => {
     const stored = readStorage<EnvironmentItem[]>(ENVIRONMENTS_STORAGE_KEY, [])
 
@@ -321,6 +333,26 @@ function App() {
 
     localStorage.setItem(ACTIVE_ENVIRONMENT_STORAGE_KEY, activeEnvironment.id)
   }, [activeEnvironment])
+
+  useEffect(() => {
+    if (!isRunningLoadTest) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      setLoadTestNow(performance.now())
+    }, 200)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [isRunningLoadTest])
+
+  useEffect(() => {
+    return () => {
+      loadTestAbortRef.current?.abort()
+    }
+  }, [])
 
   const updateActiveTab = (updater: (tab: RequestTab) => RequestTab) => {
     if (!activeTab) {
@@ -733,16 +765,34 @@ function App() {
   }
 
   const updateLoadTestConfig = (
-    key: keyof LoadTestConfig,
+    key: 'totalRequests' | 'durationSeconds' | 'concurrency',
     value: number,
   ) => {
-    setLoadTestConfig((currentConfig) => ({
-      ...currentConfig,
-      [key]:
-        key === 'concurrency'
-          ? clampNumber(value, 1, 50)
-          : clampNumber(value, 1, 1000),
-    }))
+    setLoadTestConfig((currentConfig) => {
+      if (key === 'concurrency') {
+        return { ...currentConfig, concurrency: clampNumber(value, 1, 50) }
+      }
+
+      if (key === 'durationSeconds') {
+        return {
+          ...currentConfig,
+          durationSeconds: clampNumber(
+            value,
+            LOAD_TEST_MIN_DURATION_SECONDS,
+            LOAD_TEST_MAX_DURATION_SECONDS,
+          ),
+        }
+      }
+
+      return {
+        ...currentConfig,
+        totalRequests: clampNumber(value, 1, 1000),
+      }
+    })
+  }
+
+  const updateLoadTestMode = (mode: LoadTestMode) => {
+    setLoadTestConfig((currentConfig) => ({ ...currentConfig, mode }))
   }
 
   const sendRequest = async () => {
@@ -858,10 +908,20 @@ function App() {
 
     setIsRunningLoadTest(true)
     setLoadTestFeedback(null)
+    setLoadTestResult(null)
+    const startMark = performance.now()
+    setLoadTestStartedAt(startMark)
+    setLoadTestNow(startMark)
+
+    const abortController =
+      loadTestConfig.mode === 'duration' ? new AbortController() : null
+    loadTestAbortRef.current = abortController
 
     try {
       const payload = resolveRequestInput(requestInput, activeEnvironment)
-      const result = await runLoadTest(payload, loadTestConfig)
+      const result = await runLoadTest(payload, loadTestConfig, {
+        signal: abortController?.signal,
+      })
       setLoadTestResult(result)
     } catch (error) {
       setLoadTestFeedback(
@@ -870,8 +930,13 @@ function App() {
           : 'Falha ao executar o teste de carga.',
       )
     } finally {
+      loadTestAbortRef.current = null
       setIsRunningLoadTest(false)
     }
+  }
+
+  const stopLoadTest = () => {
+    loadTestAbortRef.current?.abort()
   }
 
   return (
@@ -1300,8 +1365,15 @@ function App() {
                       feedback={loadTestFeedback}
                       isRunning={isRunningLoadTest}
                       onChange={updateLoadTestConfig}
+                      onModeChange={updateLoadTestMode}
                       onRun={executeLoadTestForActiveTab}
+                      onStop={stopLoadTest}
                       result={loadTestResult}
+                      elapsedMs={
+                        loadTestStartedAt != null
+                          ? Math.max(0, loadTestNow - loadTestStartedAt)
+                          : 0
+                      }
                     />
                   </section>
                 </div>
@@ -1320,7 +1392,13 @@ type LoadTestEditorProps = {
   feedback: string | null
   isRunning: boolean
   onRun: () => void
-  onChange: (key: keyof LoadTestConfig, value: number) => void
+  onStop: () => void
+  onChange: (
+    key: 'totalRequests' | 'durationSeconds' | 'concurrency',
+    value: number,
+  ) => void
+  onModeChange: (mode: LoadTestMode) => void
+  elapsedMs: number
 }
 
 function LoadTestEditor({
@@ -1329,43 +1407,119 @@ function LoadTestEditor({
   feedback,
   isRunning,
   onRun,
+  onStop,
   onChange,
+  onModeChange,
+  elapsedMs,
 }: LoadTestEditorProps) {
+  const isDurationMode = config.mode === 'duration'
+  const targetDurationMs = config.durationSeconds * 1000
+  const showLive = isRunning && isDurationMode
+  const liveProgress =
+    showLive && targetDurationMs > 0
+      ? Math.min(100, (elapsedMs / targetDurationMs) * 100)
+      : 0
+
+  const chartSamples = showLive ? [] : (result?.samples ?? [])
+  const chartElapsedMs = showLive
+    ? Math.max(elapsedMs, targetDurationMs)
+    : (result?.totalDurationMs ?? 0)
+  const chartHasData = chartSamples.length > 0
+
+  const totalSuccess = showLive ? 0 : (result?.successfulRequests ?? 0)
+  const totalFailure = showLive ? 0 : (result?.failedRequests ?? 0)
+  const totalRequests = totalSuccess + totalFailure
+  const successRatio = totalRequests > 0 ? totalSuccess / totalRequests : 0
+
   return (
     <div className="stack gap-sm">
       <div className="response-header">
         <div>
           <h2>Teste de carga</h2>
           <p className="subtle">
-            Executa varias chamadas da request atual com concorrencia controlada.
+            Execute várias chamadas da request atual com concorrência controlada.
+            No modo por tempo a execução roda no servidor até o fim da janela (ou até
+            você cancelar).
           </p>
         </div>
+        {showLive ? (
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={onStop}
+          >
+            Parar carga
+          </button>
+        ) : (
+          <button
+            className="primary-button"
+            type="button"
+            onClick={onRun}
+            disabled={isRunning}
+          >
+            {isRunning ? 'Executando carga...' : 'Iniciar carga'}
+          </button>
+        )}
+      </div>
+
+      <div className="load-test-mode-toggle" role="tablist" aria-label="Modo do teste de carga">
         <button
-          className="primary-button"
           type="button"
-          onClick={onRun}
+          role="tab"
+          aria-selected={isDurationMode}
+          className={`load-test-mode-toggle__option ${isDurationMode ? 'is-active' : ''}`}
+          onClick={() => onModeChange('duration')}
           disabled={isRunning}
         >
-          {isRunning ? 'Executando carga...' : 'Iniciar carga'}
+          <span>Por tempo</span>
+          <ClockIcon className="load-test-mode-toggle__icon" />
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!isDurationMode}
+          className={`load-test-mode-toggle__option ${!isDurationMode ? 'is-active' : ''}`}
+          onClick={() => onModeChange('count')}
+          disabled={isRunning}
+        >
+          <span>Por nº de requests</span>
+          <PeopleIcon className="load-test-mode-toggle__icon" />
         </button>
       </div>
 
       <div className="field-grid">
-        <label className="field">
-          <span>Total de requests</span>
-          <input
-            type="number"
-            min={1}
-            max={1000}
-            value={config.totalRequests}
-            onChange={(event) =>
-              onChange('totalRequests', Number(event.target.value || 0))
-            }
-          />
-        </label>
+        {isDurationMode ? (
+          <label className="field">
+            <span>Duração (segundos)</span>
+            <input
+              type="number"
+              min={LOAD_TEST_MIN_DURATION_SECONDS}
+              max={LOAD_TEST_MAX_DURATION_SECONDS}
+              value={config.durationSeconds}
+              onChange={(event) =>
+                onChange('durationSeconds', Number(event.target.value || 0))
+              }
+              disabled={isRunning}
+            />
+          </label>
+        ) : (
+          <label className="field">
+            <span>Total de requests</span>
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              value={config.totalRequests}
+              onChange={(event) =>
+                onChange('totalRequests', Number(event.target.value || 0))
+              }
+              disabled={isRunning}
+            />
+          </label>
+        )}
 
         <label className="field">
-          <span>Concorrencia</span>
+          <span>Concorrência</span>
           <input
             type="number"
             min={1}
@@ -1374,6 +1528,7 @@ function LoadTestEditor({
             onChange={(event) =>
               onChange('concurrency', Number(event.target.value || 0))
             }
+            disabled={isRunning}
           />
         </label>
       </div>
@@ -1383,7 +1538,75 @@ function LoadTestEditor({
         não para testes distribuídos pesados.
       </p>
 
-      {feedback && <div className="import-feedback import-feedback--error">{feedback}</div>}
+      {feedback && (
+        <div className="import-feedback import-feedback--error">{feedback}</div>
+      )}
+
+      {showLive && (
+        <div className="load-test-live">
+          <div className="load-test-live__header">
+            <strong>Em execução no servidor</strong>
+            <span className="subtle">
+              {formatDuration(elapsedMs)} / {formatDuration(targetDurationMs)}
+            </span>
+          </div>
+          <div
+            className="load-test-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(liveProgress)}
+          >
+            <div
+              className="load-test-progress__fill"
+              style={{ width: `${liveProgress}%` }}
+            />
+          </div>
+          <p className="subtle load-test-live__hint">
+            As métricas e os gráficos são atualizados quando o servidor concluir o
+            teste. Use &quot;Parar carga&quot; para cancelar (encerra a conexão e o
+            servidor para de agendar novas requests).
+          </p>
+        </div>
+      )}
+
+      {(showLive || result) && (
+        <div className="load-test-charts">
+          <div className="load-test-chart-card">
+            <h3>Sucesso x falha</h3>
+            <SuccessFailureDonut
+              successCount={totalSuccess}
+              failureCount={totalFailure}
+            />
+            <div className="load-test-chart-legend">
+              <span className="load-test-chart-legend__item load-test-chart-legend__item--success">
+                <span className="load-test-chart-legend__swatch" /> Sucesso{' '}
+                <strong>{formatPercent(successRatio)}</strong>
+              </span>
+              <span className="load-test-chart-legend__item load-test-chart-legend__item--failure">
+                <span className="load-test-chart-legend__swatch" /> Falha{' '}
+                <strong>{formatPercent(1 - successRatio)}</strong>
+              </span>
+            </div>
+          </div>
+
+          <div className="load-test-chart-card load-test-chart-card--wide">
+            <h3>Throughput ao longo do tempo</h3>
+            {chartHasData ? (
+              <ThroughputChart
+                samples={chartSamples}
+                elapsedMs={chartElapsedMs}
+              />
+            ) : (
+              <div className="empty-card compact-card">
+                {showLive
+                  ? 'Aguardando o resultado do servidor...'
+                  : 'Aguardando primeiras respostas...'}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {result ? (
         <div className="stack gap-sm">
@@ -1402,7 +1625,7 @@ function LoadTestEditor({
             </div>
             <div className="metric-card">
               <span className="metric-card__label">Duração</span>
-              <strong>{result.totalDurationMs} ms</strong>
+              <strong>{formatDuration(result.totalDurationMs)}</strong>
             </div>
             <div className="metric-card">
               <span className="metric-card__label">P50</span>
@@ -1454,12 +1677,300 @@ function LoadTestEditor({
           )}
         </div>
       ) : (
-        <div className="empty-card compact-card">
-          Execute um teste para visualizar throughput e latencias.
-        </div>
+        !showLive && (
+          <div className="empty-card compact-card">
+            Execute um teste para visualizar throughput, latências e a proporção
+            de sucesso.
+          </div>
+        )
       )}
     </div>
   )
+}
+
+type IconProps = {
+  className?: string
+}
+
+function ClockIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  )
+}
+
+function PeopleIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M2.6 19c.6-2.8 3.2-4.6 6.4-4.6s5.8 1.8 6.4 4.6" />
+      <circle cx="17" cy="9" r="2.6" />
+      <path d="M15.8 14.6c2.6.4 4.6 2 5.2 4.4" />
+    </svg>
+  )
+}
+
+type SuccessFailureDonutProps = {
+  successCount: number
+  failureCount: number
+}
+
+function SuccessFailureDonut({
+  successCount,
+  failureCount,
+}: SuccessFailureDonutProps) {
+  const total = successCount + failureCount
+  const size = 140
+  const stroke = 18
+  const radius = (size - stroke) / 2
+  const circumference = 2 * Math.PI * radius
+  const successRatio = total > 0 ? successCount / total : 0
+  const successLength = circumference * successRatio
+  const failureLength = circumference - successLength
+
+  return (
+    <svg
+      className="load-test-donut"
+      viewBox={`0 0 ${size} ${size}`}
+      role="img"
+      aria-label={`Sucesso ${formatPercent(successRatio)} e falha ${formatPercent(1 - successRatio)}`}
+    >
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="rgba(255,255,255,0.08)"
+        strokeWidth={stroke}
+      />
+      {total > 0 && (
+        <>
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="var(--load-test-success, #4ade80)"
+            strokeWidth={stroke}
+            strokeDasharray={`${successLength} ${circumference}`}
+            strokeDashoffset={circumference / 4}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            strokeLinecap="butt"
+          />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="var(--load-test-failure, #f87171)"
+            strokeWidth={stroke}
+            strokeDasharray={`${failureLength} ${circumference}`}
+            strokeDashoffset={circumference / 4 - successLength}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            strokeLinecap="butt"
+          />
+        </>
+      )}
+      <text
+        x="50%"
+        y="48%"
+        textAnchor="middle"
+        className="load-test-donut__value"
+      >
+        {formatPercent(successRatio)}
+      </text>
+      <text
+        x="50%"
+        y="64%"
+        textAnchor="middle"
+        className="load-test-donut__caption"
+      >
+        sucesso
+      </text>
+    </svg>
+  )
+}
+
+type ThroughputChartProps = {
+  samples: LoadTestSample[]
+  elapsedMs: number
+}
+
+function ThroughputChart({ samples, elapsedMs }: ThroughputChartProps) {
+  const width = 520
+  const height = 160
+  const padding = { top: 12, right: 12, bottom: 22, left: 28 }
+  const innerWidth = width - padding.left - padding.right
+  const innerHeight = height - padding.top - padding.bottom
+
+  const totalMs = Math.max(elapsedMs, 1000)
+  const bucketCount = Math.min(60, Math.max(6, Math.round(totalMs / 1000)))
+  const bucketMs = totalMs / bucketCount
+
+  const buckets = Array.from({ length: bucketCount }, () => ({
+    success: 0,
+    failure: 0,
+  }))
+
+  for (const sample of samples) {
+    const index = Math.min(
+      bucketCount - 1,
+      Math.max(0, Math.floor(sample.elapsedMs / bucketMs)),
+    )
+    if (sample.ok) {
+      buckets[index].success += 1
+    } else {
+      buckets[index].failure += 1
+    }
+  }
+
+  const maxValue = Math.max(
+    1,
+    ...buckets.map((bucket) => bucket.success + bucket.failure),
+  )
+  const barWidth = innerWidth / bucketCount
+
+  return (
+    <svg
+      className="load-test-throughput"
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label="Throughput de requests ao longo do tempo, por segundo"
+    >
+      <line
+        x1={padding.left}
+        y1={padding.top + innerHeight}
+        x2={padding.left + innerWidth}
+        y2={padding.top + innerHeight}
+        stroke="rgba(255,255,255,0.15)"
+      />
+      <line
+        x1={padding.left}
+        y1={padding.top}
+        x2={padding.left}
+        y2={padding.top + innerHeight}
+        stroke="rgba(255,255,255,0.15)"
+      />
+
+      <text
+        x={padding.left - 6}
+        y={padding.top + 4}
+        textAnchor="end"
+        className="load-test-throughput__axis"
+      >
+        {maxValue}
+      </text>
+      <text
+        x={padding.left - 6}
+        y={padding.top + innerHeight}
+        textAnchor="end"
+        className="load-test-throughput__axis"
+      >
+        0
+      </text>
+      <text
+        x={padding.left}
+        y={height - 6}
+        textAnchor="start"
+        className="load-test-throughput__axis"
+      >
+        0s
+      </text>
+      <text
+        x={padding.left + innerWidth}
+        y={height - 6}
+        textAnchor="end"
+        className="load-test-throughput__axis"
+      >
+        {formatDuration(totalMs)}
+      </text>
+
+      {buckets.map((bucket, index) => {
+        const total = bucket.success + bucket.failure
+        if (total === 0) {
+          return null
+        }
+
+        const x = padding.left + index * barWidth
+        const failureHeight = (bucket.failure / maxValue) * innerHeight
+        const successHeight = (bucket.success / maxValue) * innerHeight
+        const failureY = padding.top + innerHeight - failureHeight
+        const successY = failureY - successHeight
+        const gap = barWidth > 4 ? 1.5 : 0
+
+        return (
+          <g key={`bucket-${index}`}>
+            {bucket.success > 0 && (
+              <rect
+                x={x + gap / 2}
+                y={successY}
+                width={Math.max(1, barWidth - gap)}
+                height={Math.max(1, successHeight)}
+                fill="var(--load-test-success, #4ade80)"
+                rx={1.5}
+              />
+            )}
+            {bucket.failure > 0 && (
+              <rect
+                x={x + gap / 2}
+                y={failureY}
+                width={Math.max(1, barWidth - gap)}
+                height={Math.max(1, failureHeight)}
+                fill="var(--load-test-failure, #f87171)"
+                rx={1.5}
+              />
+            )}
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+function formatDuration(ms: number) {
+  if (!Number.isFinite(ms) || ms < 0) {
+    return '0s'
+  }
+
+  const totalSeconds = Math.round(ms / 100) / 10
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds.toFixed(totalSeconds >= 10 ? 0 : 1)}s`
+  }
+
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = Math.round(totalSeconds - minutes * 60)
+  return `${minutes}m ${seconds}s`
+}
+
+function formatPercent(ratio: number) {
+  if (!Number.isFinite(ratio)) {
+    return '0%'
+  }
+
+  return `${(ratio * 100).toFixed(ratio === 0 || ratio === 1 ? 0 : 1)}%`
 }
 
 type AuthEditorProps = {

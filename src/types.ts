@@ -96,15 +96,30 @@ export type ExecuteRequestInput = Pick<
   'method' | 'url' | 'headers' | 'queryParams' | 'auth' | 'body'
 >
 
+export type LoadTestMode = 'count' | 'duration'
+
 export type LoadTestConfig = {
+  mode: LoadTestMode
   totalRequests: number
+  durationSeconds: number
   concurrency: number
 }
 
+export type LoadTestSample = {
+  index: number
+  elapsedMs: number
+  durationMs: number
+  ok: boolean
+  status: number
+  error?: string
+}
+
 export type LoadTestResult = {
+  mode: LoadTestMode
   startedAt: string
   totalRequests: number
   concurrency: number
+  durationSeconds?: number
   successfulRequests: number
   failedRequests: number
   totalDurationMs: number
@@ -116,4 +131,5 @@ export type LoadTestResult = {
   p95LatencyMs: number
   statusCounts: Array<{ label: string; count: number }>
   errorSamples: string[]
+  samples: LoadTestSample[]
 }
