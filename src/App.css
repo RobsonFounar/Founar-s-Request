@@ -809,19 +809,19 @@
 }
 
 .method-chip--get {
-  background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
-}
-
-.method-chip--post {
   background: rgba(59, 130, 246, 0.12);
   color: #60a5fa;
 }
 
+.method-chip--post {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+
 .method-chip--put,
 .method-chip--patch {
-  background: rgba(245, 158, 11, 0.12);
-  color: #fbbf24;
+  background: rgba(251, 146, 60, 0.12);
+  color: #fb923c;
 }
 
 .method-chip--delete {
@@ -1512,6 +1512,206 @@ pre {
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-h);
+}
+
+.variable-highlight {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.variable-highlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  pointer-events: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.variable-highlight:focus-within::before {
+  border-color: var(--accent-strong, #60a5fa);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+
+.variable-highlight__ghost {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font: inherit;
+  color: var(--text-h);
+  white-space: pre;
+  overflow: hidden;
+  letter-spacing: inherit;
+  line-height: inherit;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+.variable-highlight__field {
+  position: relative;
+  z-index: 2;
+  background: transparent;
+  border-color: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--text-h);
+}
+
+.variable-highlight__field::selection {
+  background: rgba(251, 146, 60, 0.28);
+}
+
+.variable-highlight--textarea .variable-highlight__ghost {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.variable-highlight--textarea .variable-highlight__ghost::-webkit-scrollbar {
+  display: none;
+}
+
+.variable-highlight--gutter .variable-highlight__ghost,
+.variable-highlight--gutter .variable-highlight__field {
+  padding-left: 56px;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.variable-highlight--gutter .variable-highlight__field {
+  overflow-x: auto;
+}
+
+.variable-highlight__gutter {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 44px;
+  z-index: 3;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.025);
+  border-right: 1px solid var(--border);
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.variable-highlight__gutter-inner {
+  padding: 12px 0;
+  font: inherit;
+  color: var(--muted);
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+}
+
+.variable-highlight__gutter-line {
+  display: block;
+  padding-right: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: inherit;
+  white-space: pre;
+}
+
+.var-token,
+.json-key,
+.json-string,
+.json-number,
+.json-bool,
+.json-null,
+.json-punct {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
+  font: inherit;
+  text-decoration: none;
+  box-shadow: none;
+}
+
+.var-token--valid {
+  color: #fb923c;
+}
+
+.var-token--missing {
+  color: #f87171;
+}
+
+.json-key {
+  color: #7dd3fc;
+}
+
+.json-string {
+  color: #a3e635;
+}
+
+.json-number {
+  color: #f0abfc;
+}
+
+.json-bool {
+  color: #67e8f9;
+}
+
+.json-null {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.json-punct {
+  color: #cbd5e1;
+}
+
+.json-body-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.json-body-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.json-validity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.json-validity__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.json-validity--ok {
+  color: #4ade80;
+}
+
+.json-validity--error {
+  color: #f87171;
 }
 
 @media (max-width: 1200px) {

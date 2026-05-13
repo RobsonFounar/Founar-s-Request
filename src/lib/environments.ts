@@ -72,6 +72,12 @@ export function resolveTemplate(
   })
 }
 
+export function buildVariableNameSet(
+  environment?: EnvironmentItem,
+): Set<string> {
+  return new Set(Object.keys(buildVariableMap(environment)))
+}
+
 function buildVariableMap(environment?: EnvironmentItem) {
   return (environment?.variables ?? []).reduce<Record<string, string>>(
     (accumulator, row) => {

@@ -3,9 +3,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import './App.css'
 import {
+  buildVariableNameSet,
   collectMissingVariables,
   resolveRequestInput,
 } from './lib/environments'
+import {
+  VariableHighlightedInput,
+  VariableHighlightedTextarea,
+} from './components/VariableHighlight'
+import { formatJsonWithVariables, isJsonValid } from './lib/jsonFormatter'
 import { importCurl, importOpenApi } from './lib/importers'
 import {
   executeRequest,
@@ -280,6 +286,10 @@ function App() {
     () =>
       activeInput ? collectMissingVariables(activeInput, activeEnvironment) : [],
     [activeEnvironment, activeInput],
+  )
+  const variableNames = useMemo(
+    () => buildVariableNameSet(activeEnvironment),
+    [activeEnvironment],
   )
 
   useEffect(() => {
@@ -1191,6 +1201,7 @@ function App() {
                         showTitle={false}
                         title="Query params"
                         rows={activeTab.queryParams}
+                        variableNames={variableNames}
                         onChange={(rows) =>
                           updateActiveTab((tab) => ({
                             ...tab,
@@ -1203,6 +1214,7 @@ function App() {
                     {requestConfigTabId === 'auth' && (
                       <AuthEditor
                         auth={activeTab.auth}
+                        variableNames={variableNames}
                         onChange={(auth) =>
                           updateActiveTab((tab) => ({
                             ...tab,
@@ -1217,6 +1229,7 @@ function App() {
                         showTitle={false}
                         title="Headers"
                         rows={activeTab.headers}
+                        variableNames={variableNames}
                         onChange={(rows) =>
                           updateActiveTab((tab) => ({
                             ...tab,
@@ -1246,11 +1259,12 @@ function App() {
                             ))}
                           </select>
 
-                          <input
+                          <VariableHighlightedInput
                             className="url-input"
                             type="text"
                             placeholder="https://api.exemplo.com/v1/users"
                             value={activeTab.url}
+                            variableNames={variableNames}
                             onChange={(event) =>
                               updateActiveTab((tab) => ({
                                 ...tab,
@@ -1279,6 +1293,7 @@ function App() {
 
                         <BodyEditor
                           body={activeTab.body}
+                          variableNames={variableNames}
                           onChange={(body) =>
                             updateActiveTab((tab) => ({
                               ...tab,
@@ -1976,9 +1991,10 @@ function formatPercent(ratio: number) {
 type AuthEditorProps = {
   auth: AuthConfig
   onChange: (auth: AuthConfig) => void
+  variableNames: ReadonlySet<string>
 }
 
-function AuthEditor({ auth, onChange }: AuthEditorProps) {
+function AuthEditor({ auth, onChange, variableNames }: AuthEditorProps) {
   return (
     <div className="stack gap-sm">
       <label className="field">
@@ -2030,9 +2046,10 @@ function AuthEditor({ auth, onChange }: AuthEditorProps) {
         <div className="field-grid">
           <label className="field">
             <span>Usuário</span>
-            <input
+            <VariableHighlightedInput
               type="text"
               value={auth.username}
+              variableNames={variableNames}
               onChange={(event) =>
                 onChange({ ...auth, username: event.target.value })
               }
@@ -2055,9 +2072,10 @@ function AuthEditor({ auth, onChange }: AuthEditorProps) {
         <div className="field-grid">
           <label className="field">
             <span>Chave</span>
-            <input
+            <VariableHighlightedInput
               type="text"
               value={auth.key}
+              variableNames={variableNames}
               onChange={(event) => onChange({ ...auth, key: event.target.value })}
             />
           </label>
@@ -2095,9 +2113,10 @@ function AuthEditor({ auth, onChange }: AuthEditorProps) {
 type BodyEditorProps = {
   body: RequestBody
   onChange: (body: RequestBody) => void
+  variableNames: ReadonlySet<string>
 }
 
-function BodyEditor({ body, onChange }: BodyEditorProps) {
+function BodyEditor({ body, onChange, variableNames }: BodyEditorProps) {
   return (
     <div className="stack gap-sm">
       <label className="field">
@@ -2127,12 +2146,46 @@ function BodyEditor({ body, onChange }: BodyEditorProps) {
         </select>
       </label>
 
-      {(body.mode === 'json' || body.mode === 'text') && (
-        <label className="field">
-          <span>Conteúdo</span>
-          <textarea
+      {body.mode === 'json' && (
+        <div className="field">
+          <div className="json-body-header">
+            <span>Conteúdo</span>
+            <div className="json-body-actions">
+              <JsonValidityIndicator content={body.content} />
+              <button
+                className="ghost-button ghost-button--compact"
+                type="button"
+                onClick={() => {
+                  const result = formatJsonWithVariables(body.content)
+                  if (result.ok) {
+                    onChange({ ...body, content: result.value })
+                  }
+                }}
+              >
+                Formatar JSON
+              </button>
+            </div>
+          </div>
+          <VariableHighlightedTextarea
             rows={12}
             value={body.content}
+            variableNames={variableNames}
+            language="json"
+            withLineNumbers
+            onChange={(event) =>
+              onChange({ ...body, content: event.target.value })
+            }
+          />
+        </div>
+      )}
+
+      {body.mode === 'text' && (
+        <label className="field">
+          <span>Conteúdo</span>
+          <VariableHighlightedTextarea
+            rows={12}
+            value={body.content}
+            variableNames={variableNames}
             onChange={(event) =>
               onChange({ ...body, content: event.target.value })
             }
@@ -2144,6 +2197,7 @@ function BodyEditor({ body, onChange }: BodyEditorProps) {
         <KeyValueEditor
           title="Campos"
           rows={body.entries}
+          variableNames={variableNames}
           onChange={(rows) => onChange({ mode: 'form', entries: rows })}
         />
       )}
@@ -2151,10 +2205,31 @@ function BodyEditor({ body, onChange }: BodyEditorProps) {
   )
 }
 
+function JsonValidityIndicator({ content }: { content: string }) {
+  const trimmed = content.trim()
+
+  if (!trimmed) {
+    return null
+  }
+
+  const valid = isJsonValid(content)
+
+  return (
+    <span
+      className={`json-validity json-validity--${valid ? 'ok' : 'error'}`}
+      title={valid ? 'JSON válido' : 'JSON inválido'}
+    >
+      <span className="json-validity__dot" />
+      {valid ? 'JSON válido' : 'JSON inválido'}
+    </span>
+  )
+}
+
 type KeyValueEditorProps = {
   title: string
   rows: KeyValueRow[]
   onChange: (rows: KeyValueRow[]) => void
+  variableNames: ReadonlySet<string>
   showTitle?: boolean
 }
 
@@ -2162,6 +2237,7 @@ function KeyValueEditor({
   title,
   rows,
   onChange,
+  variableNames,
   showTitle = true,
 }: KeyValueEditorProps) {
   return (
@@ -2210,10 +2286,11 @@ function KeyValueEditor({
               <span>Ativo</span>
             </label>
 
-            <input
+            <VariableHighlightedInput
               type="text"
               placeholder="chave"
               value={row.key}
+              variableNames={variableNames}
               onChange={(event) =>
                 onChange(
                   rows.map((current) =>
@@ -2224,10 +2301,11 @@ function KeyValueEditor({
                 )
               }
             />
-            <input
+            <VariableHighlightedInput
               type="text"
               placeholder="valor"
               value={row.value}
+              variableNames={variableNames}
               onChange={(event) =>
                 onChange(
                   rows.map((current) =>
