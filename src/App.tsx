@@ -33,6 +33,18 @@ const METHODS: HttpMethod[] = [
   'OPTIONS',
 ]
 
+type RequestConfigTabId = 'query' | 'auth' | 'headers' | 'body'
+
+const REQUEST_CONFIG_TAB_OPTIONS: ReadonlyArray<{
+  id: RequestConfigTabId
+  label: string
+}> = [
+  { id: 'query', label: 'Query params' },
+  { id: 'auth', label: 'Autenticação' },
+  { id: 'headers', label: 'Headers' },
+  { id: 'body', label: 'Request' },
+]
+
 const TABS_STORAGE_KEY = 'runner.tabs'
 const ACTIVE_TAB_STORAGE_KEY = 'runner.activeTabId'
 const HISTORY_STORAGE_KEY = 'runner.history'
@@ -55,6 +67,34 @@ const ENVIRONMENT_COLOR_OPTIONS: Array<{
   { value: 'branco', label: 'Branco' },
   { value: 'lilas', label: 'Lilas' },
 ]
+
+function BrandFounar() {
+  return (
+    <>
+      <span className="brand-initial">F</span>
+      ounar
+    </>
+  )
+}
+
+function BrandRequest() {
+  return (
+    <>
+      <span className="brand-initial">R</span>
+      equest
+    </>
+  )
+}
+
+function BrandFounarRequest({ separator = ' ' }: { separator?: string }) {
+  return (
+    <>
+      <BrandFounar />
+      {separator}
+      <BrandRequest />
+    </>
+  )
+}
 
 const createRow = (key = '', value = ''): KeyValueRow => ({
   id: crypto.randomUUID(),
@@ -186,6 +226,8 @@ function App() {
   const [activeEnvironmentId, setActiveEnvironmentId] = useState(() =>
     readStorage<string>(ACTIVE_ENVIRONMENT_STORAGE_KEY, ''),
   )
+  const [requestConfigTabId, setRequestConfigTabId] =
+    useState<RequestConfigTabId>('query')
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0],
@@ -234,6 +276,10 @@ function App() {
 
     localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab.id)
   }, [activeTab])
+
+  useEffect(() => {
+    setRequestConfigTabId('query')
+  }, [activeTabId])
 
   useEffect(() => {
     localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history))
@@ -775,25 +821,14 @@ function App() {
     <div className="app-shell">
       <header className="app-header">
         <div>
-          <p className="eyebrow">Founar Request · Beta</p>
+          <p className="eyebrow">
+            <BrandFounarRequest /> · Beta
+          </p>
           <h1>Cliente de APIs com requests, collections e testes</h1>
           <p className="subtle">
-            Primeira base do Founar Request para enviar requests HTTP, organizar
+            Primeira base do <BrandFounarRequest /> para enviar requests HTTP, organizar
             fluxos e validar APIs em um unico lugar.
           </p>
-        </div>
-        <div className="header-actions">
-          <button className="ghost-button" type="button" onClick={() => addTab()}>
-            Nova aba
-          </button>
-          <button
-            className="primary-button"
-            type="button"
-            onClick={sendRequest}
-            disabled={!activeTab || activeTab.isSending}
-          >
-            {activeTab?.isSending ? 'Enviando...' : 'Enviar request'}
-          </button>
         </div>
       </header>
 
@@ -888,53 +923,57 @@ function App() {
         </aside>
 
         <main className="main-panel">
-          <div className="tab-strip">
-            {tabs.map((tab) => (
-              <div
-                className={`tab-pill ${tab.id === activeTab?.id ? 'is-active' : ''}`}
-                key={tab.id}
-              >
-                <button type="button" onClick={() => setActiveTabId(tab.id)}>
-                  {tab.name}
-                </button>
-                <span className="tab-pill__close">
-                  <button type="button" onClick={() => closeTab(tab.id)}>
-                    x
+          <div className="main-panel-strip">
+            <div className="tab-strip tab-strip--main">
+              {tabs.map((tab) => (
+                <div
+                  className={`tab-pill ${tab.id === activeTab?.id ? 'is-active' : ''}`}
+                  key={tab.id}
+                >
+                  <button type="button" onClick={() => setActiveTabId(tab.id)}>
+                    {tab.name}
                   </button>
+                  <span className="tab-pill__close">
+                    <button type="button" onClick={() => closeTab(tab.id)}>
+                      x
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="main-panel-strip__context request-context request-context--strip">
+              <span className="request-context-pill">
+                <span className="request-context-pill__label">
+                  Environment ativo:{' '}
                 </span>
-              </div>
-            ))}
+                <span
+                  className={`request-context-pill__value environment-color-text environment-color-text--${activeEnvironment?.color ?? 'branco'}`}
+                >
+                  {activeEnvironment?.name ?? 'Nenhum'}
+                </span>
+              </span>
+              <span className="request-context-pill">
+                <span className="request-context-pill__label">Collection:{' '}</span>
+                <span className="request-context-pill__value environment-color-text environment-color-text--branco">
+                  {activeCollection?.name ?? 'Nenhuma'}
+                </span>
+              </span>
+            </div>
           </div>
 
           {activeTab && (
             <>
               <section className="panel request-panel">
-                <div className="request-topbar">
-                  <div className="request-context request-context--top">
-                    <span className="request-context-pill">
-                      <span className="request-context-pill__label">
-                        Environment ativo:{' '}
-                      </span>
-                      <span
-                        className={`request-context-pill__value environment-color-text environment-color-text--${activeEnvironment?.color ?? 'branco'}`}
-                      >
-                        {activeEnvironment?.name ?? 'Nenhum'}
-                      </span>
-                    </span>
-                    <span className="request-context-pill">
-                      <span className="request-context-pill__label">
-                        Collection:{' '}
-                      </span>
-                      <span className="request-context-pill__value environment-color-text environment-color-text--branco">
-                        {activeCollection?.name ?? 'Nenhuma'}
-                      </span>
-                    </span>
-                  </div>
-                </div>
-
-                <label className="request-name-row">
-                  <span className="request-name-row__label">Nome da aba</span>
+                <div className="request-name-row">
+                  <label
+                    className="request-name-row__label"
+                    htmlFor={`request-name-${activeTab.id}`}
+                  >
+                    Nome da <BrandRequest />
+                  </label>
                   <input
+                    id={`request-name-${activeTab.id}`}
                     className="request-name-row__input"
                     type="text"
                     value={activeTab.name}
@@ -948,64 +987,17 @@ function App() {
                   <button
                     className="ghost-button"
                     type="button"
+                    onClick={() => addTab()}
+                  >
+                    Nova aba
+                  </button>
+                  <button
+                    className="ghost-button"
+                    type="button"
                     onClick={() => addTab(activeTab)}
                   >
                     Duplicar aba
                   </button>
-                </label>
-
-                <div className="request-row">
-                  <select
-                    className="method-select"
-                    value={activeTab.method}
-                    onChange={(event) =>
-                      updateActiveTab((tab) => ({
-                        ...tab,
-                        method: event.target.value as HttpMethod,
-                      }))
-                    }
-                  >
-                    {METHODS.map((method) => (
-                      <option key={method} value={method}>
-                        {method}
-                      </option>
-                    ))}
-                  </select>
-
-                  <input
-                    className="url-input"
-                    type="text"
-                    placeholder="https://api.exemplo.com/v1/users"
-                    value={activeTab.url}
-                    onChange={(event) =>
-                      updateActiveTab((tab) => ({
-                        ...tab,
-                        url: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="request-context">
-                  {activeTab.savedRequestId && activeTab.collectionId && (
-                    <span className="subtle">
-                      Vinculada a uma request salva.
-                    </span>
-                  )}
-                  {resolvedInput && resolvedInput.url !== activeTab.url && (
-                    <span className="subtle">
-                      URL resolvida: {resolvedInput.url}
-                    </span>
-                  )}
-                </div>
-
-                {missingVariables.length > 0 && (
-                  <div className="warning-banner">
-                    Variaveis ausentes: {missingVariables.join(', ')}
-                  </div>
-                )}
-
-                <div className="request-actions-row">
                   <button
                     className="ghost-button"
                     type="button"
@@ -1013,124 +1005,225 @@ function App() {
                     disabled={!activeCollection}
                   >
                     {activeTab.savedRequestId &&
-                    activeTab.collectionId === activeCollection?.id
-                      ? 'Atualizar request salva'
-                      : 'Salvar Request na Collection'}
+                    activeTab.collectionId === activeCollection?.id ? (
+                      <>
+                        Atualizar <BrandRequest /> salva
+                      </>
+                    ) : (
+                      <>
+                        Salvar <BrandRequest /> na Collection
+                      </>
+                    )}
                   </button>
                 </div>
-              </section>
 
-              <div className="content-grid">
-                <div className="stack">
-                  <section className="panel">
-                    <h2>Autenticacao</h2>
-                    <AuthEditor
-                      auth={activeTab.auth}
-                      onChange={(auth) =>
-                        updateActiveTab((tab) => ({
-                          ...tab,
-                          auth,
-                        }))
-                      }
-                    />
-                  </section>
+                {activeTab.savedRequestId && activeTab.collectionId && (
+                  <p className="subtle request-saved-hint">
+                    Vinculada a uma request salva.
+                  </p>
+                )}
 
-                  <section className="panel">
-                    <KeyValueEditor
-                      title="Query params"
-                      rows={activeTab.queryParams}
-                      onChange={(rows) =>
-                        updateActiveTab((tab) => ({
-                          ...tab,
-                          queryParams: rows,
-                        }))
-                      }
-                    />
-                  </section>
+                <div className="request-config-panel">
+                  <div
+                    className="request-config-tabs"
+                    role="tablist"
+                    aria-label="Parametros da request"
+                  >
+                    {REQUEST_CONFIG_TAB_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="tab"
+                        id={`request-config-tab-${option.id}`}
+                        aria-selected={requestConfigTabId === option.id}
+                        aria-controls="request-config-tabpanel"
+                        className={`request-config-tab ${
+                          requestConfigTabId === option.id ? 'is-active' : ''
+                        }`}
+                        onClick={() => setRequestConfigTabId(option.id)}
+                      >
+                        {option.id === 'body' ? <BrandRequest /> : option.label}
+                      </button>
+                    ))}
+                  </div>
 
-                  <section className="panel">
-                    <KeyValueEditor
-                      title="Headers"
-                      rows={activeTab.headers}
-                      onChange={(rows) =>
-                        updateActiveTab((tab) => ({
-                          ...tab,
-                          headers: rows,
-                        }))
-                      }
-                    />
-                  </section>
+                  <div
+                    id="request-config-tabpanel"
+                    role="tabpanel"
+                    aria-labelledby={`request-config-tab-${requestConfigTabId}`}
+                    className="request-config-tabpanel"
+                  >
+                    {requestConfigTabId === 'query' && (
+                      <KeyValueEditor
+                        showTitle={false}
+                        title="Query params"
+                        rows={activeTab.queryParams}
+                        onChange={(rows) =>
+                          updateActiveTab((tab) => ({
+                            ...tab,
+                            queryParams: rows,
+                          }))
+                        }
+                      />
+                    )}
 
-                  <section className="panel">
-                    <h2>Body</h2>
-                    <BodyEditor
-                      body={activeTab.body}
-                      onChange={(body) =>
-                        updateActiveTab((tab) => ({
-                          ...tab,
-                          body,
-                        }))
-                      }
-                    />
-                  </section>
-                </div>
+                    {requestConfigTabId === 'auth' && (
+                      <AuthEditor
+                        auth={activeTab.auth}
+                        onChange={(auth) =>
+                          updateActiveTab((tab) => ({
+                            ...tab,
+                            auth,
+                          }))
+                        }
+                      />
+                    )}
 
-                <div className="stack">
-                  <section className="panel response-panel">
-                    <div className="response-header">
-                      <div>
-                        <h2>Resposta</h2>
-                        <p className="subtle">
-                          Status e resposta da ultima execucao da aba atual.
-                        </p>
-                      </div>
-                      {activeTab.response && (
-                        <div className="response-meta">
-                          <span
-                            className={`status-pill ${getStatusToneClass(activeTab.response.status)}`}
-                          >
-                            {activeTab.response.status}{' '}
-                            {activeTab.response.statusText}
-                          </span>
-                          <span>{activeTab.response.durationMs} ms</span>
-                        </div>
-                      )}
-                    </div>
+                    {requestConfigTabId === 'headers' && (
+                      <KeyValueEditor
+                        showTitle={false}
+                        title="Headers"
+                        rows={activeTab.headers}
+                        onChange={(rows) =>
+                          updateActiveTab((tab) => ({
+                            ...tab,
+                            headers: rows,
+                          }))
+                        }
+                      />
+                    )}
 
-                    {activeTab.response ? (
-                      <div className="response-body">
-                        {activeTab.response.error && (
-                          <div className="response-error">
-                            {activeTab.response.error}
-                          </div>
-                        )}
-
-                        <div className="response-actions">
-                          <button
-                            className="ghost-button ghost-button--compact"
-                            type="button"
-                            onClick={() =>
+                    {requestConfigTabId === 'body' && (
+                      <div className="request-tab-body-stack">
+                        <div className="request-row">
+                          <select
+                            className="method-select"
+                            value={activeTab.method}
+                            onChange={(event) =>
                               updateActiveTab((tab) => ({
                                 ...tab,
-                                response: undefined,
+                                method: event.target.value as HttpMethod,
                               }))
                             }
                           >
-                            Limpar resposta
+                            {METHODS.map((method) => (
+                              <option key={method} value={method}>
+                                {method}
+                              </option>
+                            ))}
+                          </select>
+
+                          <input
+                            className="url-input"
+                            type="text"
+                            placeholder="https://api.exemplo.com/v1/users"
+                            value={activeTab.url}
+                            onChange={(event) =>
+                              updateActiveTab((tab) => ({
+                                ...tab,
+                                url: event.target.value,
+                              }))
+                            }
+                          />
+
+                          <button
+                            className="primary-button primary-button--compact"
+                            type="button"
+                            onClick={sendRequest}
+                            disabled={activeTab.isSending}
+                          >
+                            {activeTab.isSending ? 'Enviando...' : 'Enviar request'}
                           </button>
                         </div>
 
-                        <div className="response-section">
-                          <pre>{activeTab.response.body || 'Resposta sem body.'}</pre>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="empty-card">
-                        Envie uma request para visualizar a resposta aqui.
+                        {resolvedInput && resolvedInput.url !== activeTab.url && (
+                          <div className="request-context">
+                            <span className="subtle">
+                              URL resolvida: {resolvedInput.url}
+                            </span>
+                          </div>
+                        )}
+
+                        <BodyEditor
+                          body={activeTab.body}
+                          onChange={(body) =>
+                            updateActiveTab((tab) => ({
+                              ...tab,
+                              body,
+                            }))
+                          }
+                        />
+
+                        <section className="panel response-panel response-panel--embedded">
+                          <div className="response-header">
+                            <div>
+                              <h2>Resposta</h2>
+                              <p className="subtle">
+                                Status e resposta da ultima execucao da aba atual.
+                              </p>
+                            </div>
+                            {activeTab.response && (
+                              <div className="response-meta">
+                                <span
+                                  className={`status-pill ${getStatusToneClass(activeTab.response.status)}`}
+                                >
+                                  {activeTab.response.status}{' '}
+                                  {activeTab.response.statusText}
+                                </span>
+                                <span>{activeTab.response.durationMs} ms</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {activeTab.response ? (
+                            <div className="response-body">
+                              {activeTab.response.error && (
+                                <div className="response-error">
+                                  {activeTab.response.error}
+                                </div>
+                              )}
+
+                              <div className="response-actions">
+                                <button
+                                  className="ghost-button ghost-button--compact"
+                                  type="button"
+                                  onClick={() =>
+                                    updateActiveTab((tab) => ({
+                                      ...tab,
+                                      response: undefined,
+                                    }))
+                                  }
+                                >
+                                  Limpar resposta
+                                </button>
+                              </div>
+
+                              <div className="response-section">
+                                <pre>
+                                  {activeTab.response.body || 'Resposta sem body.'}
+                                </pre>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="empty-card">
+                              Envie uma request para visualizar a resposta aqui.
+                            </div>
+                          )}
+                        </section>
                       </div>
                     )}
-                  </section>
+                  </div>
+                </div>
 
+                {missingVariables.length > 0 && (
+                  <div className="warning-banner">
+                    Variaveis ausentes: {missingVariables.join(', ')}
+                  </div>
+                )}
+              </section>
+
+              <div className="content-grid content-grid--response-only">
+                <div className="stack">
                   <section className="panel">
                     <LoadTestEditor
                       config={loadTestConfig}
@@ -1481,21 +1574,40 @@ type KeyValueEditorProps = {
   title: string
   rows: KeyValueRow[]
   onChange: (rows: KeyValueRow[]) => void
+  showTitle?: boolean
 }
 
-function KeyValueEditor({ title, rows, onChange }: KeyValueEditorProps) {
+function KeyValueEditor({
+  title,
+  rows,
+  onChange,
+  showTitle = true,
+}: KeyValueEditorProps) {
   return (
     <div className="stack gap-sm">
-      <div className="section-heading">
-        <h2>{title}</h2>
-        <button
-          className="ghost-button"
-          type="button"
-          onClick={() => onChange([...rows, createRow()])}
-        >
-          Adicionar
-        </button>
-      </div>
+      {showTitle ? (
+        <div className="section-heading">
+          <h2>{title}</h2>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={() => onChange([...rows, createRow()])}
+          >
+            Adicionar
+          </button>
+        </div>
+      ) : (
+        <div className="kv-editor-toolbar">
+          <span className="sr-only">{title}</span>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={() => onChange([...rows, createRow()])}
+          >
+            Adicionar
+          </button>
+        </div>
+      )}
 
       <div className="kv-list">
         {rows.map((row) => (
