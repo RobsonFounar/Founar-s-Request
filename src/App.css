@@ -508,23 +508,8 @@
   font-weight: 700;
 }
 
-.environments-selected-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.environment-active-select {
   width: 100%;
-}
-
-.environments-selected-row__select {
-  flex: 1;
-  min-width: 0;
-}
-
-.environments-selected-row__color {
-  flex-shrink: 0;
-  font-size: 13px;
-  line-height: 1.2;
-  white-space: nowrap;
 }
 
 .response-body {
@@ -1233,6 +1218,31 @@ textarea {
 
 .ghost-button--compact {
   padding: 8px 12px;
+}
+
+/* Importacao: botoes com destaque (--accent) */
+.import-block .ghost-button--import-curl,
+.import-block .ghost-button--import-openapi {
+  width: 100%;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.import-block .ghost-button--import-curl:hover,
+.import-block .ghost-button--import-openapi:hover {
+  filter: brightness(1.08);
+}
+
+.import-block .ghost-button--import-curl:active,
+.import-block .ghost-button--import-openapi:active {
+  filter: brightness(0.95);
+}
+
+.import-block .ghost-button--import-openapi {
+  font-size: 0.8125rem;
+  white-space: nowrap;
 }
 
 .danger-button--compact {

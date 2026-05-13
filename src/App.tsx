@@ -1006,9 +1006,7 @@ function App() {
 
             <div className="main-panel-strip__context request-context request-context--strip">
               <span className="request-context-pill">
-                <span className="request-context-pill__label">
-                  Environment ativo:{' '}
-                </span>
+                <span className="request-context-pill__label">Environment:{' '}</span>
                 <span
                   className={`request-context-pill__value environment-color-text environment-color-text--${activeEnvironment?.color ?? 'branco'}`}
                 >
@@ -1869,30 +1867,25 @@ function EnvironmentEditor({
 
       <label className="field" htmlFor="environment-active-select">
         <span>Selecionado</span>
-        <div className="environments-selected-row">
-          <select
-            id="environment-active-select"
-            className="environments-selected-row__select"
-            value={activeEnvironment.id}
-            onChange={(event) => onSelect(event.target.value)}
-          >
-            {environments.map((environment) => (
-              <option key={environment.id} value={environment.id}>
-                {environment.name}
-              </option>
-            ))}
-          </select>
-          <span
-            className="environments-selected-row__color"
-            title={`Cor: ${getEnvironmentColorLabel(activeEnvironment.color)}`}
-          >
-            <span
-              className={`environment-color-text environment-color-text--${activeEnvironment.color}`}
+        <select
+          id="environment-active-select"
+          className="environment-active-select environment-color-select"
+          style={{
+            color: ENVIRONMENT_COLOR_CSS[activeEnvironment.color],
+          }}
+          value={activeEnvironment.id}
+          onChange={(event) => onSelect(event.target.value)}
+        >
+          {environments.map((environment) => (
+            <option
+              key={environment.id}
+              value={environment.id}
+              style={{ color: ENVIRONMENT_COLOR_CSS[environment.color] }}
             >
-              {getEnvironmentColorLabel(activeEnvironment.color)}
-            </span>
-          </span>
-        </div>
+              {environment.name}
+            </option>
+          ))}
+        </select>
       </label>
 
       <p className="subtle helper-text environments-block-helper-text">
@@ -2566,7 +2559,11 @@ function ImportToolsEditor({
           />
         </label>
 
-        <button className="ghost-button" type="button" onClick={onCurlImport}>
+        <button
+          className="ghost-button ghost-button--import-curl"
+          type="button"
+          onClick={onCurlImport}
+        >
           Importar cURL na aba atual
         </button>
       </div>
@@ -2580,15 +2577,6 @@ function ImportToolsEditor({
         </div>
 
         <label className="field">
-          <span>Arquivo da especificacao</span>
-          <input
-            type="file"
-            accept=".json,.yaml,.yml,application/json,text/yaml,text/x-yaml"
-            onChange={(event) => void onOpenApiFileSelected(event.target.files?.[0])}
-          />
-        </label>
-
-        <label className="field">
           <span>Conteudo OpenAPI</span>
           <textarea
             rows={8}
@@ -2598,7 +2586,20 @@ function ImportToolsEditor({
           />
         </label>
 
-        <button className="ghost-button" type="button" onClick={onOpenApiImport}>
+        <label className="field">
+          <span>Arquivo da especificacao</span>
+          <input
+            type="file"
+            accept=".json,.yaml,.yml,application/json,text/yaml,text/x-yaml"
+            onChange={(event) => void onOpenApiFileSelected(event.target.files?.[0])}
+          />
+        </label>
+
+        <button
+          className="ghost-button ghost-button--import-openapi"
+          type="button"
+          onClick={onOpenApiImport}
+        >
           Importar OpenAPI em nova collection
         </button>
       </div>
