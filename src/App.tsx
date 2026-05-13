@@ -11,6 +11,7 @@ import {
   VariableHighlightedInput,
   VariableHighlightedTextarea,
 } from './components/VariableHighlight'
+import { JsonViewer } from './components/JsonViewer'
 import { formatJsonWithVariables, isJsonValid } from './lib/jsonFormatter'
 import { importCurl, importOpenApi } from './lib/importers'
 import {
@@ -1347,9 +1348,20 @@ function App() {
                               </div>
 
                               <div className="response-section">
-                                <pre>
-                                  {activeTab.response.body || 'Resposta sem body.'}
-                                </pre>
+                                {activeTab.response.body ? (
+                                  isJsonResponse(
+                                    activeTab.response.headers,
+                                    activeTab.response.body,
+                                  ) ? (
+                                    <JsonViewer
+                                      code={activeTab.response.body}
+                                    />
+                                  ) : (
+                                    <pre>{activeTab.response.body}</pre>
+                                  )
+                                ) : (
+                                  <pre>Resposta sem body.</pre>
+                                )}
                               </div>
                             </div>
                           ) : (
@@ -3514,6 +3526,34 @@ function getStatusToneClass(status: number) {
   }
 
   return 'status-pill--neutral'
+}
+
+function isJsonResponse(
+  headers: Array<{ key: string; value: string }>,
+  body: string,
+) {
+  const contentType =
+    headers.find((header) => header.key.toLowerCase() === 'content-type')
+      ?.value ?? ''
+
+  if (contentType.toLowerCase().includes('json')) {
+    return true
+  }
+
+  const trimmed = body.trim()
+  if (
+    trimmed.length > 0 &&
+    (trimmed.startsWith('{') || trimmed.startsWith('['))
+  ) {
+    try {
+      JSON.parse(trimmed)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  return false
 }
 
 function formatDate(value: string) {

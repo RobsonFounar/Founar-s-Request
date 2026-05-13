@@ -7,12 +7,14 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 const VARIABLE_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g
 
-type Segment = {
+export type Segment = {
   text: string
   className?: string
 }
 
 type HighlightLanguage = 'none' | 'json'
+
+const EMPTY_VARIABLE_SET: ReadonlySet<string> = new Set()
 
 function classifyVariable(
   name: string,
@@ -96,9 +98,9 @@ function isWhitespace(char: string) {
   return char === ' ' || char === '\t' || char === '\n' || char === '\r'
 }
 
-function segmentJson(
+export function segmentJson(
   value: string,
-  variableNames: ReadonlySet<string>,
+  variableNames: ReadonlySet<string> = EMPTY_VARIABLE_SET,
 ): Segment[] {
   if (!value) {
     return []

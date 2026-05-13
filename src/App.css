@@ -1714,6 +1714,42 @@ pre {
   color: #f87171;
 }
 
+.json-viewer {
+  display: block;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: auto;
+  max-height: 520px;
+}
+
+.json-viewer__grid {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: start;
+  padding: 12px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono',
+    monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.json-viewer__gutter {
+  text-align: right;
+  padding: 0 14px 0 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.json-viewer__line {
+  padding-left: 14px;
+  white-space: pre;
+  color: var(--text-h);
+}
+
 @media (max-width: 1200px) {
   .workspace,
   .content-grid {
