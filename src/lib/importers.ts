@@ -73,7 +73,7 @@ export function importCurl(command: string, currentTab: RequestTab): RequestTab 
   const tokens = tokenizeShellCommand(normalizedCommand)
 
   if (tokens.length === 0 || tokens[0].toLowerCase() !== 'curl') {
-    throw new Error('O texto informado nao parece ser um comando cURL valido.')
+    throw new Error('O texto informado não parece ser um comando cURL válido.')
   }
 
   let method: HttpMethod = 'GET'
@@ -170,7 +170,7 @@ export function importCurl(command: string, currentTab: RequestTab): RequestTab 
   }
 
   if (!url) {
-    throw new Error('Nao foi possivel identificar a URL no comando cURL.')
+    throw new Error('Não foi possível identificar a URL no comando cURL.')
   }
 
   const { cleanUrl, queryRows } = splitUrlAndQuery(url)
@@ -195,7 +195,7 @@ export function importOpenApi(source: string): ImportOpenApiResult {
   const normalizedSource = source.trim()
 
   if (!normalizedSource) {
-    throw new Error('Cole o conteudo OpenAPI antes de importar.')
+    throw new Error('Cole o conteúdo OpenAPI antes de importar.')
   }
 
   let document: OpenApiDocument
@@ -203,11 +203,11 @@ export function importOpenApi(source: string): ImportOpenApiResult {
   try {
     document = parseYaml(normalizedSource) as OpenApiDocument
   } catch {
-    throw new Error('Nao foi possivel ler o arquivo OpenAPI em JSON/YAML.')
+    throw new Error('Não foi possível ler o arquivo OpenAPI em JSON/YAML.')
   }
 
   if (!document?.paths || typeof document.paths !== 'object') {
-    throw new Error('A especificacao OpenAPI nao possui o campo paths.')
+    throw new Error('A especificação OpenAPI não possui o campo paths.')
   }
 
   const serverUrl = document.servers?.[0]?.url?.trim() ?? ''
@@ -269,7 +269,7 @@ export function importOpenApi(source: string): ImportOpenApiResult {
   }
 
   if (requests.length === 0) {
-    throw new Error('Nenhuma operacao suportada foi encontrada no OpenAPI.')
+    throw new Error('Nenhuma operação suportada foi encontrada no OpenAPI.')
   }
 
   return {

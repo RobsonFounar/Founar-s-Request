@@ -1,17 +1,17 @@
 # Founar Request Beta
 
 Ferramenta em desenvolvimento para testes de APIs, collections, environments,
-importacao de cURL/OpenAPI e testes de carga.
+importação de cURL/OpenAPI e testes de carga.
 
-## O que ja existe
+## O que já existe
 
 - editor de requests com abas
 - auth por `Bearer`, `Basic` e `API Key`
 - collections e requests salvas
-- environments com variaveis `{{nomeDaVariavel}}`
-- importacao de `cURL`
-- importacao de `OpenAPI` em `JSON` ou `YAML`
-- area basica de testes de carga
+- environments com variáveis `{{nomeDaVariável}}`
+- importação de `cURL`
+- importação de `OpenAPI` em `JSON` ou `YAML`
+- área básica de testes de carga
 
 ## Rodando localmente
 
@@ -20,7 +20,7 @@ Requisitos:
 - `Node.js 22+`
 - `npm`
 
-Instalacao:
+Instalação:
 
 ```bash
 npm install
@@ -37,7 +37,7 @@ O app sobe com:
 - frontend Vite
 - backend Express
 
-## Build de producao
+## Build de produção
 
 ```bash
 npm run build
@@ -48,42 +48,42 @@ Esse comando gera:
 - `dist/` com o frontend
 - `server-dist/` com o backend compilado
 
-Para iniciar em producao:
+Para iniciar em produção:
 
 ```bash
 npm run start
 ```
 
-Em producao, o backend serve o frontend e as rotas `/api` no mesmo dominio.
+Em produção, o backend serve o frontend e as rotas `/api` no mesmo domínio.
 
 ## Como disponibilizar para um grupo de teste
 
 ### Fluxo recomendado
 
-1. subir este projeto para um repositorio no `GitHub`
-2. conectar o repositorio ao `Render`
+1. subir este projeto para um repositório no `GitHub`
+2. conectar o repositório ao `Render`
 3. criar um `Web Service`
 4. usar:
    - `Build Command`: `npm install --include=dev && npm run build`
    - `Start Command`: `npm run start`
 5. compartilhar a URL gerada com o grupo
 
-O projeto ja inclui um arquivo `render.yaml` para facilitar esse deploy.
+O projeto já inclui um arquivo `render.yaml` para facilitar esse deploy.
 
-### Opcao de repositorio
+### Opção de repositório
 
 - `privado`: melhor para grupo controlado
-- `publico`: mais facil para divulgar e receber contribuicoes
+- `público`: mais fácil para divulgar e receber contribuições
 
 ## Scripts principais
 
 - `npm run dev` inicia frontend e backend para desenvolvimento
-- `npm run build` gera build de producao
-- `npm run start` inicia o servidor de producao
+- `npm run build` gera build de produção
+- `npm run start` inicia o servidor de produção
 - `npm run lint` executa o lint
 
-## Observacoes para beta
+## Observações para beta
 
 - os testes de carga devem ser usados com responsabilidade
-- esta versao ainda e um MVP
-- o objetivo principal neste momento e coletar feedback de uso
+- esta versão ainda é um MVP
+- o objetivo principal neste momento é coletar feedback de uso

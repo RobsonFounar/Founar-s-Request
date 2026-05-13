@@ -1,27 +1,27 @@
 # Deploy do Beta
 
-Este projeto foi preparado para subir como um unico servico Node:
+Este projeto foi preparado para subir como um único serviço Node:
 
 - o frontend compilado fica em `dist/`
 - o backend compilado fica em `server-dist/`
-- em producao, o servidor Express entrega o frontend e as rotas `/api`
+- em produção, o servidor Express entrega o frontend e as rotas `/api`
 
-## 1. Criar repositorio no GitHub
+## 1. Criar repositório no GitHub
 
-Crie um repositorio novo no GitHub, de preferencia:
+Crie um repositório novo no GitHub, de preferência:
 
-- `privado`, se o objetivo e um grupo fechado de teste
+- `privado`, se o objetivo é um grupo fechado de teste
 - com um nome como `founar-request-beta` ou `founar-request`
 
-Depois conecte o repositorio local:
+Depois conecte o repositório local:
 
 ```bash
 git remote add origin https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git
 ```
 
-## 2. Publicar o codigo
+## 2. Publicar o código
 
-Se ainda nao houver commit inicial:
+Se ainda não houver commit inicial:
 
 ```bash
 git add .
@@ -36,7 +36,7 @@ No Render:
 
 1. clique em `New +`
 2. escolha `Blueprint` ou `Web Service`
-3. conecte o repositorio do GitHub
+3. conecte o repositório do GitHub
 4. se usar `Blueprint`, o arquivo `render.yaml` do projeto deve ser detectado
 5. se criar manualmente um `Web Service`, use:
 
@@ -48,30 +48,30 @@ No Render:
 
 Depois do deploy:
 
-- abra a URL publica
+- abra a URL pública
 - confirme se a interface carrega
 - teste a rota `GET /api/health`
 - execute uma request simples
-- valide a importacao de `cURL`
-- valide a criacao de `collections`
+- valide a importação de `cURL`
+- valide a criação de `collections`
 
 ## 5. Compartilhar com o grupo
 
 Envie:
 
-- a URL publica do beta
-- uma mensagem curta dizendo que e uma versao em testes
-- um formulario simples para feedback
+- a URL pública do beta
+- uma mensagem curta dizendo que é uma versão em testes
+- um formulário simples para feedback
 
 Exemplo:
 
 ```text
-Segue a versao beta da ferramenta de testes de API.
+Segue a versão beta da ferramenta de testes de API.
 
 Link:
 https://SEU-APP.onrender.com
 
-Se possivel, testem:
+Se possível, testem:
 - criar uma request
 - salvar em collection
 - usar environments
@@ -82,8 +82,8 @@ Feedback:
 https://SEU-FORMULARIO
 ```
 
-## Observacoes
+## Observações
 
 - o primeiro acesso no plano free pode ficar lento
 - testes de carga devem ser usados com cuidado
-- esta versao foi preparada para validacao funcional, nao para alta escala
+- esta versão foi preparada para validação funcional, não para alta escala

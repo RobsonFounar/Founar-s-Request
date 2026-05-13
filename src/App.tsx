@@ -67,7 +67,7 @@ const ENVIRONMENT_COLOR_OPTIONS: Array<{
   { value: 'vermelho', label: 'Vermelho' },
   { value: 'amarelo', label: 'Amarelo' },
   { value: 'branco', label: 'Branco' },
-  { value: 'lilas', label: 'Lilas' },
+  { value: 'lilas', label: 'Lilás' },
 ]
 
 const ENVIRONMENT_COLOR_CSS: Record<EnvironmentColor, string> = {
@@ -693,7 +693,7 @@ function App() {
         message:
           error instanceof Error
             ? error.message
-            : 'Falha ao importar a especificacao OpenAPI.',
+            : 'Falha ao importar a especificação OpenAPI.',
       })
     }
   }
@@ -708,12 +708,12 @@ function App() {
       setOpenApiImportText(text)
       setImportFeedback({
         tone: 'success',
-        message: `Arquivo "${file.name}" carregado para importacao.`,
+        message: `Arquivo "${file.name}" carregado para importação.`,
       })
     } catch {
       setImportFeedback({
         tone: 'error',
-        message: 'Nao foi possivel ler o arquivo OpenAPI selecionado.',
+        message: 'Não foi possível ler o arquivo OpenAPI selecionado.',
       })
     }
   }
@@ -765,7 +765,7 @@ function App() {
         headers: [],
         body: '',
         receivedAt: new Date().toISOString(),
-        error: `Defina as variaveis antes de enviar: ${unresolvedVariables.join(', ')}`,
+        error: `Defina as variáveis antes de enviar: ${unresolvedVariables.join(', ')}`,
       }
 
       setTabs((currentTabs) =>
@@ -851,7 +851,7 @@ function App() {
 
     if (unresolvedVariables.length > 0) {
       setLoadTestFeedback(
-        `Defina as variaveis antes de iniciar a carga: ${unresolvedVariables.join(', ')}`,
+        `Defina as variáveis antes de iniciar a carga: ${unresolvedVariables.join(', ')}`,
       )
       return
     }
@@ -892,7 +892,7 @@ function App() {
           </h1>
           <p className="subtle">
             <BrandFounarRequest /> para enviar requests HTTP, organizar fluxos e validar APIs
-            em um unico lugar.
+            em um único lugar.
           </p>
         </div>
       </header>
@@ -944,9 +944,9 @@ function App() {
           </section>
 
           <div className="sidebar-section">
-            <h2>Historico</h2>
+            <h2>Histórico</h2>
             <p className="subtle">
-              Ultimas execucoes para reabrir ou repetir um fluxo.
+              Últimas execuções para reabrir ou repetir um fluxo.
             </p>
           </div>
 
@@ -1095,7 +1095,7 @@ function App() {
                   <div
                     className="request-config-tabs"
                     role="tablist"
-                    aria-label="Parametros da request"
+                    aria-label="Parâmetros da request"
                   >
                     {REQUEST_CONFIG_TAB_OPTIONS.map((option) => (
                       <button
@@ -1227,7 +1227,7 @@ function App() {
                             <div>
                               <h2>Resposta</h2>
                               <p className="subtle">
-                                Status e resposta da ultima execucao da aba atual.
+                                Status e resposta da última execução da aba atual.
                               </p>
                             </div>
                             {activeTab.response && (
@@ -1285,7 +1285,7 @@ function App() {
 
                 {missingVariables.length > 0 && (
                   <div className="warning-banner">
-                    Variaveis ausentes: {missingVariables.join(', ')}
+                    Variáveis ausentes: {missingVariables.join(', ')}
                   </div>
                 )}
               </section>
@@ -1379,8 +1379,8 @@ function LoadTestEditor({
       </div>
 
       <p className="subtle helper-text">
-        Use com cuidado em APIs reais. Este MVP foi pensado para validacao rapida,
-        nao para testes distribuidos pesados.
+        Use com cuidado em APIs reais. Este MVP foi pensado para validação rápida,
+        não para testes distribuídos pesados.
       </p>
 
       {feedback && <div className="import-feedback import-feedback--error">{feedback}</div>}
@@ -1401,7 +1401,7 @@ function LoadTestEditor({
               <strong>{formatMetric(result.requestsPerSecond)}</strong>
             </div>
             <div className="metric-card">
-              <span className="metric-card__label">Duracao</span>
+              <span className="metric-card__label">Duração</span>
               <strong>{result.totalDurationMs} ms</strong>
             </div>
             <div className="metric-card">
@@ -1416,7 +1416,7 @@ function LoadTestEditor({
 
           <div className="field-grid">
             <div className="metric-inline">
-              <span className="metric-card__label">Min / Medio / Max</span>
+              <span className="metric-card__label">Min / Médio / Max</span>
               <strong>
                 {result.minLatencyMs} / {formatMetric(result.avgLatencyMs)} /{' '}
                 {result.maxLatencyMs} ms
@@ -1518,7 +1518,7 @@ function AuthEditor({ auth, onChange }: AuthEditorProps) {
       {auth.type === 'basic' && (
         <div className="field-grid">
           <label className="field">
-            <span>Usuario</span>
+            <span>Usuário</span>
             <input
               type="text"
               value={auth.username}
@@ -1618,7 +1618,7 @@ function BodyEditor({ body, onChange }: BodyEditorProps) {
 
       {(body.mode === 'json' || body.mode === 'text') && (
         <label className="field">
-          <span>Conteudo</span>
+          <span>Conteúdo</span>
           <textarea
             rows={12}
             value={body.content}
@@ -1889,7 +1889,7 @@ function EnvironmentEditor({
       </label>
 
       <p className="subtle helper-text environments-block-helper-text">
-        Use variaveis com o formato <code>{'{{variavel}}'}</code> em URL, headers,
+        Use variáveis com o formato <code>{'{{variável}}'}</code> em URL, headers,
         body e auth.
       </p>
 
@@ -2393,7 +2393,7 @@ function CollectionsEditor({
               type="button"
               onClick={() => {
                 const ok = window.confirm(
-                  `Excluir a collection "${contextCollection.name}"? As requests salvas nesta collection serao removidas.`,
+                  `Excluir a collection "${contextCollection.name}"? As requests salvas nesta collection serão removidas.`,
                 )
 
                 if (ok) {
@@ -2529,8 +2529,8 @@ function ImportToolsEditor({
 }: ImportToolsEditorProps) {
   return (
     <div className="stack gap-sm">
-      <div className="section-heading">
-        <h2>Importacao</h2>
+      <div className="import-tools-heading">
+        <h2 className="import-tools-heading__title">Importação</h2>
       </div>
 
       {feedback && (
@@ -2543,7 +2543,9 @@ function ImportToolsEditor({
 
       <div className="import-block">
         <div>
-          <h3>Importar cURL</h3>
+          <div className="section-heading">
+            <h2>Importar cURL</h2>
+          </div>
           <p className="subtle helper-text">
             Cole um comando cURL para preencher a aba atual.
           </p>
@@ -2570,14 +2572,16 @@ function ImportToolsEditor({
 
       <div className="import-block">
         <div>
-          <h3>Importar OpenAPI</h3>
+          <div className="section-heading">
+            <h2>Importar OpenAPI</h2>
+          </div>
           <p className="subtle helper-text">
             Cole JSON/YAML ou carregue um arquivo para gerar uma nova collection.
           </p>
         </div>
 
         <label className="field">
-          <span>Conteudo OpenAPI</span>
+          <span>Conteúdo OpenAPI</span>
           <textarea
             rows={8}
             placeholder="openapi: 3.0.0"
@@ -2587,7 +2591,7 @@ function ImportToolsEditor({
         </label>
 
         <label className="field">
-          <span>Arquivo da especificacao</span>
+          <span>Arquivo da especificação</span>
           <input
             type="file"
             accept=".json,.yaml,.yml,application/json,text/yaml,text/x-yaml"
@@ -2619,12 +2623,12 @@ function EnvironmentVariablesEditor({
   return (
     <div className="stack gap-sm">
       <div className="section-heading">
-        <h2>Variaveis</h2>
+        <h2>Variáveis</h2>
         <button
           className="ghost-button ghost-button--compact"
           type="button"
-          title="Adicionar variavel"
-          aria-label="Adicionar variavel"
+          title="Adicionar variável"
+          aria-label="Adicionar variável"
           onClick={() => onChange([...rows, createRow()])}
         >
           +
@@ -2641,7 +2645,7 @@ function EnvironmentVariablesEditor({
             <div className="environment-variable-card" key={row.id}>
               <div className="environment-variable-card__fields">
                 <label className="field">
-                  <span>Nome da variavel</span>
+                  <span>Nome da variável</span>
                   <span className="field-preview">
                     Nome atual:{' '}
                     {keyTrimmed ? (
@@ -2686,7 +2690,7 @@ function EnvironmentVariablesEditor({
                 </label>
 
                 <p className="subtle helper-text environment-variable-card__usage">
-                  Uso da Variavel: <code>{syntaxPreview}</code>
+                  Uso da variável: <code>{syntaxPreview}</code>
                 </p>
 
                 <div className="environment-variable-card__footer">
@@ -2705,7 +2709,7 @@ function EnvironmentVariablesEditor({
                       }
                     />
                     <span>
-                      {row.enabled ? 'Variavel ativa' : 'Variavel inativa'}
+                      {row.enabled ? 'Variável ativa' : 'Variável inativa'}
                     </span>
                   </label>
 

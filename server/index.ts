@@ -295,7 +295,7 @@ async function executeHttpRequest(
   try {
     targetUrl = new URL(input.url)
   } catch {
-    return createErrorResponse(400, 'Bad Request', 'A URL informada nao e valida.')
+    return createErrorResponse(400, 'Bad Request', 'A URL informada não é válida.')
   }
 
   for (const row of input.queryParams ?? []) {

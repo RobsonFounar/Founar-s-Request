@@ -386,7 +386,7 @@
   margin-bottom: 12px;
 }
 
-/* Alinha com titulos de secao (.panel h2) — ex.: Autenticacao, Body */
+/* Alinha com títulos de seção (.panel h2) — ex.: Autenticação, Body */
 .request-name-row__label {
   min-width: 110px;
   color: var(--text-h);
@@ -903,7 +903,8 @@
 }
 
 .collections-block-heading,
-.environments-block-heading {
+.environments-block-heading,
+.import-tools-heading {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -912,7 +913,8 @@
 }
 
 .collections-block-heading__title,
-.environments-block-heading__title {
+.environments-block-heading__title,
+.import-tools-heading__title {
   width: 100%;
   margin: 0;
   text-align: center;
@@ -924,7 +926,8 @@
 }
 
 .collections-block-heading__actions,
-.environments-block-heading__actions {
+.environments-block-heading__actions,
+.import-tools-heading__actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -1220,7 +1223,7 @@ textarea {
   padding: 8px 12px;
 }
 
-/* Importacao: botoes com destaque (--accent) */
+/* Importação: botões com destaque (--accent) */
 .import-block .ghost-button--import-curl,
 .import-block .ghost-button--import-openapi {
   width: 100%;
