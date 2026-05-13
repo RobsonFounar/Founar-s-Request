@@ -111,6 +111,18 @@ export type LoadTestSample = {
   durationMs: number
   ok: boolean
   status: number
+  method?: string
+  url?: string
+  error?: string
+}
+
+export type LoadTestLogEntry = {
+  index: number
+  method: string
+  url: string
+  status: number
+  ok: boolean
+  durationMs: number
   error?: string
 }
 

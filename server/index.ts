@@ -135,6 +135,29 @@ app.post('/api/load-tests/run', async (req, res) => {
     }
   }
 
+  const acceptHeader = String(req.headers.accept ?? '').toLowerCase()
+  const streaming = acceptHeader.includes('application/x-ndjson')
+
+  if (streaming) {
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('X-Accel-Buffering', 'no')
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders()
+    }
+  }
+
+  const writeEvent = (event: unknown) => {
+    if (!streaming || res.writableEnded) {
+      return
+    }
+    try {
+      res.write(`${JSON.stringify(event)}\n`)
+    } catch {
+      /* Cliente desconectou no meio do stream. */
+    }
+  }
+
   let aborted = false
   const onResponseClosed = () => {
     if (!res.writableEnded) {
@@ -144,10 +167,27 @@ app.post('/api/load-tests/run', async (req, res) => {
 
   res.once('close', onResponseClosed)
 
+  const requestMethod = (input.request.method || 'GET').toUpperCase()
+  const requestUrl = input.request.url
   const startedAt = new Date().toISOString()
   const suiteStartedAt = Date.now()
   let nextRequestIndex = 0
   const samples: LoadTestSample[] = []
+
+  const recordSample = (sample: LoadTestSample) => {
+    samples.push(sample)
+    writeEvent({
+      type: 'sample',
+      index: sample.index,
+      elapsedMs: sample.elapsedMs,
+      durationMs: sample.durationMs,
+      ok: sample.ok,
+      status: sample.status,
+      error: sample.error,
+      method: requestMethod,
+      url: requestUrl,
+    })
+  }
 
   try {
     if (mode === 'count') {
@@ -164,7 +204,7 @@ app.post('/api/load-tests/run', async (req, res) => {
           const requestStartedAt = Date.now()
           const result = await executeHttpRequest(input.request)
 
-          samples.push({
+          recordSample({
             index: currentIndex,
             elapsedMs: requestStartedAt - suiteStartedAt,
             durationMs: result.durationMs,
@@ -186,7 +226,7 @@ app.post('/api/load-tests/run', async (req, res) => {
           const requestStartedAt = Date.now()
           const result = await executeHttpRequest(input.request)
 
-          samples.push({
+          recordSample({
             index: currentIndex,
             elapsedMs: requestStartedAt - suiteStartedAt,
             durationMs: result.durationMs,
@@ -225,30 +265,37 @@ app.post('/api/load-tests/run', async (req, res) => {
     ),
   ].slice(0, 5)
 
+  const resultPayload = {
+    mode,
+    startedAt,
+    totalRequests: samples.length,
+    concurrency,
+    durationSeconds: mode === 'duration' ? durationSeconds : undefined,
+    successfulRequests,
+    failedRequests,
+    totalDurationMs,
+    requestsPerSecond:
+      totalDurationMs > 0
+        ? Number((samples.length / (totalDurationMs / 1000)).toFixed(2))
+        : 0,
+    minLatencyMs: latencies[0] ?? 0,
+    avgLatencyMs: Number(avgLatencyMs.toFixed(2)),
+    maxLatencyMs: latencies[latencies.length - 1] ?? 0,
+    p50LatencyMs: percentile(latencies, 0.5),
+    p95LatencyMs: percentile(latencies, 0.95),
+    statusCounts,
+    errorSamples,
+    samples,
+  }
+
   try {
-    if (!res.headersSent) {
-      res.json({
-        mode,
-        startedAt,
-        totalRequests: samples.length,
-        concurrency,
-        durationSeconds: mode === 'duration' ? durationSeconds : undefined,
-        successfulRequests,
-        failedRequests,
-        totalDurationMs,
-        requestsPerSecond:
-          totalDurationMs > 0
-            ? Number((samples.length / (totalDurationMs / 1000)).toFixed(2))
-            : 0,
-        minLatencyMs: latencies[0] ?? 0,
-        avgLatencyMs: Number(avgLatencyMs.toFixed(2)),
-        maxLatencyMs: latencies[latencies.length - 1] ?? 0,
-        p50LatencyMs: percentile(latencies, 0.5),
-        p95LatencyMs: percentile(latencies, 0.95),
-        statusCounts,
-        errorSamples,
-        samples,
-      })
+    if (streaming) {
+      if (!res.writableEnded) {
+        res.write(`${JSON.stringify({ type: 'result', ...resultPayload })}\n`)
+        res.end()
+      }
+    } else if (!res.headersSent) {
+      res.json(resultPayload)
     }
   } catch {
     /* Cliente desconectou antes de receber o corpo (ex.: cancelar o fetch). */

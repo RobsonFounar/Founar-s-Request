@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEvent } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import './App.css'
 import {
@@ -28,6 +28,7 @@ import type {
   HttpMethod,
   KeyValueRow,
   LoadTestConfig,
+  LoadTestLogEntry,
   LoadTestMode,
   LoadTestResult,
   LoadTestSample,
@@ -242,6 +243,7 @@ function App() {
   const [isRunningLoadTest, setIsRunningLoadTest] = useState(false)
   const [loadTestStartedAt, setLoadTestStartedAt] = useState<number | null>(null)
   const [loadTestNow, setLoadTestNow] = useState<number>(0)
+  const [loadTestLogs, setLoadTestLogs] = useState<LoadTestLogEntry[]>([])
   const loadTestAbortRef = useRef<AbortController | null>(null)
   const [environments, setEnvironments] = useState<EnvironmentItem[]>(() => {
     const stored = readStorage<EnvironmentItem[]>(ENVIRONMENTS_STORAGE_KEY, [])
@@ -920,18 +922,21 @@ function App() {
     setIsRunningLoadTest(true)
     setLoadTestFeedback(null)
     setLoadTestResult(null)
+    setLoadTestLogs([])
     const startMark = performance.now()
     setLoadTestStartedAt(startMark)
     setLoadTestNow(startMark)
 
-    const abortController =
-      loadTestConfig.mode === 'duration' ? new AbortController() : null
+    const abortController = new AbortController()
     loadTestAbortRef.current = abortController
 
     try {
       const payload = resolveRequestInput(requestInput, activeEnvironment)
       const result = await runLoadTest(payload, loadTestConfig, {
-        signal: abortController?.signal,
+        signal: abortController.signal,
+        onLog: (entry) => {
+          setLoadTestLogs((current) => [...current, entry])
+        },
       })
       setLoadTestResult(result)
     } catch (error) {
@@ -1396,6 +1401,7 @@ function App() {
                       onRun={executeLoadTestForActiveTab}
                       onStop={stopLoadTest}
                       result={loadTestResult}
+                      logs={loadTestLogs}
                       elapsedMs={
                         loadTestStartedAt != null
                           ? Math.max(0, loadTestNow - loadTestStartedAt)
@@ -1426,6 +1432,7 @@ type LoadTestEditorProps = {
   ) => void
   onModeChange: (mode: LoadTestMode) => void
   elapsedMs: number
+  logs: LoadTestLogEntry[]
 }
 
 function LoadTestEditor({
@@ -1438,6 +1445,7 @@ function LoadTestEditor({
   onChange,
   onModeChange,
   elapsedMs,
+  logs,
 }: LoadTestEditorProps) {
   const isDurationMode = config.mode === 'duration'
   const targetDurationMs = config.durationSeconds * 1000
@@ -1595,6 +1603,10 @@ function LoadTestEditor({
             servidor para de agendar novas requests).
           </p>
         </div>
+      )}
+
+      {(isRunning || logs.length > 0) && (
+        <LoadTestLogPanel logs={logs} isRunning={isRunning} />
       )}
 
       {(showLive || result) && (
@@ -1974,6 +1986,105 @@ function ThroughputChart({ samples, elapsedMs }: ThroughputChartProps) {
       })}
     </svg>
   )
+}
+
+type LoadTestLogPanelProps = {
+  logs: LoadTestLogEntry[]
+  isRunning: boolean
+}
+
+const LOAD_TEST_LOG_STICK_THRESHOLD_PX = 48
+
+function LoadTestLogPanel({ logs, isRunning }: LoadTestLogPanelProps) {
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const stickToBottomRef = useRef(true)
+  const programmaticScrollRef = useRef(false)
+
+  const handleScroll = () => {
+    if (programmaticScrollRef.current) {
+      programmaticScrollRef.current = false
+      return
+    }
+    const element = listRef.current
+    if (!element) {
+      return
+    }
+    const distanceFromBottom =
+      element.scrollHeight - (element.scrollTop + element.clientHeight)
+    stickToBottomRef.current =
+      distanceFromBottom < LOAD_TEST_LOG_STICK_THRESHOLD_PX
+  }
+
+  useLayoutEffect(() => {
+    const element = listRef.current
+    if (!element) {
+      return
+    }
+    if (stickToBottomRef.current) {
+      programmaticScrollRef.current = true
+      element.scrollTop = element.scrollHeight
+    }
+  }, [logs.length])
+
+  return (
+    <div className="load-test-logs">
+      <div className="load-test-logs__header">
+        <strong>Logs das chamadas</strong>
+        <span className="subtle">
+          {isRunning
+            ? `Acompanhando em tempo real · ${logs.length} chamada${logs.length === 1 ? '' : 's'}`
+            : `${logs.length} chamada${logs.length === 1 ? '' : 's'} registrada${logs.length === 1 ? '' : 's'}`}
+        </span>
+      </div>
+      <div
+        ref={listRef}
+        className="load-test-logs__list"
+        role="log"
+        aria-live="polite"
+        onScroll={handleScroll}
+      >
+        {logs.length === 0 ? (
+          <div className="load-test-logs__empty">
+            Aguardando primeiras respostas...
+          </div>
+        ) : (
+          logs.map((entry) => (
+            <div
+              className="load-test-logs__entry"
+              key={`${entry.index}-${entry.url}`}
+            >
+              <span className="load-test-logs__seq">#{entry.index + 1}</span>
+              <span
+                className={`load-test-logs__status load-test-logs__status--${getLogStatusTone(entry)}`}
+              >
+                {entry.status > 0 ? entry.status : 'ERR'}
+              </span>
+              <span className="load-test-logs__method">{entry.method}</span>
+              <span className="load-test-logs__url" title={entry.url}>
+                {entry.url}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+function getLogStatusTone(entry: LoadTestLogEntry) {
+  if (!entry.ok || entry.error) {
+    return 'error'
+  }
+
+  if (entry.status >= 200 && entry.status < 300) {
+    return 'success'
+  }
+
+  if (entry.status >= 300 && entry.status < 400) {
+    return 'info'
+  }
+
+  return 'error'
 }
 
 function formatDuration(ms: number) {

@@ -742,6 +742,109 @@
   letter-spacing: 0.04em;
 }
 
+.load-test-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.load-test-logs__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.load-test-logs__header strong {
+  color: var(--text-h);
+  font-size: 0.92rem;
+}
+
+.load-test-logs__list {
+  max-height: 240px;
+  overflow-y: auto;
+  overflow-anchor: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono',
+    monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.load-test-logs__empty {
+  padding: 8px 10px;
+  color: var(--muted);
+}
+
+.load-test-logs__entry {
+  display: grid;
+  grid-template-columns: 52px 48px 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.load-test-logs__seq {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.load-test-logs__entry:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.load-test-logs__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+  border-radius: 6px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  text-align: center;
+}
+
+.load-test-logs__status--success {
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+}
+
+.load-test-logs__status--info {
+  background: rgba(59, 130, 246, 0.14);
+  color: #60a5fa;
+}
+
+.load-test-logs__status--error {
+  background: rgba(239, 68, 68, 0.16);
+  color: #f87171;
+}
+
+.load-test-logs__method {
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.load-test-logs__url {
+  color: var(--text-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 720px) {
   .load-test-charts {
     grid-template-columns: 1fr;
