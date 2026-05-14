@@ -12,8 +12,13 @@ import {
   VariableHighlightedTextarea,
 } from './components/VariableHighlight'
 import { JsonViewer } from './components/JsonViewer'
+import { ResponseCaptureEditor } from './components/ResponseCaptureEditor'
 import { formatJsonWithVariables, isJsonValid } from './lib/jsonFormatter'
 import { importCurl, importOpenApi } from './lib/importers'
+import {
+  applyCaptureUpdatesToEnvironment,
+  computeCaptureUpdates,
+} from './lib/responseCapture'
 import {
   executeRequest,
   runLoadTest,
@@ -143,6 +148,7 @@ const createDefaultTab = (index: number): RequestTab => ({
   queryParams: [createRow()],
   auth: { type: 'none' },
   body: { mode: 'none' },
+  responseCaptures: [],
 })
 
 const createDefaultEnvironment = (index: number): EnvironmentItem => ({
@@ -194,6 +200,11 @@ const cloneTab = (tab: RequestTab): RequestTab => ({
   isSending: false,
   collectionId: undefined,
   savedRequestId: undefined,
+  responseCaptures:
+    tab.responseCaptures?.map((rule) => ({
+      ...rule,
+      id: crypto.randomUUID(),
+    })) ?? [],
 })
 
 const buildRequestInput = (tab: RequestTab): ExecuteRequestInput => ({
@@ -248,6 +259,7 @@ function App() {
   const [loadTestStartedAt, setLoadTestStartedAt] = useState<number | null>(null)
   const [loadTestNow, setLoadTestNow] = useState<number>(0)
   const [loadTestLogs, setLoadTestLogs] = useState<LoadTestLogEntry[]>([])
+  const [captureFeedback, setCaptureFeedback] = useState<string | null>(null)
   const loadTestAbortRef = useRef<AbortController | null>(null)
   const [environments, setEnvironments] = useState<EnvironmentItem[]>(() => {
     const stored = readStorage<EnvironmentItem[]>(ENVIRONMENTS_STORAGE_KEY, [])
@@ -383,18 +395,23 @@ function App() {
     )
   }
 
+  const activateTabById = (tabId: string) => {
+    setCaptureFeedback(null)
+    setActiveTabId(tabId)
+  }
+
   const addTab = (source?: RequestTab) => {
     const nextTab = source ? cloneTab(source) : createDefaultTab(tabs.length + 1)
 
     setTabs((currentTabs) => [...currentTabs, nextTab])
-    setActiveTabId(nextTab.id)
+    activateTabById(nextTab.id)
   }
 
   const closeTab = (tabId: string) => {
     if (tabs.length === 1) {
       const freshTab = createDefaultTab(1)
       setTabs([freshTab])
-      setActiveTabId(freshTab.id)
+      activateTabById(freshTab.id)
       return
     }
 
@@ -403,7 +420,7 @@ function App() {
     const nextActive = nextTabs[Math.max(currentIndex - 1, 0)] ?? nextTabs[0]
 
     setTabs(nextTabs)
-    setActiveTabId(nextActive.id)
+    activateTabById(nextActive.id)
   }
 
   const updateActiveEnvironment = (
@@ -627,14 +644,14 @@ function App() {
     )
 
     if (existingTab) {
-      setActiveTabId(existingTab.id)
+      activateTabById(existingTab.id)
       return
     }
 
     const nextTab = createTabFromSavedRequest(savedRequest, collectionId)
 
     setTabs((currentTabs) => [...currentTabs, nextTab])
-    setActiveTabId(nextTab.id)
+    activateTabById(nextTab.id)
   }
 
   const deleteSavedRequest = (collectionId: string, savedRequestId: string) => {
@@ -731,7 +748,7 @@ function App() {
         const nextTab = createTabFromSavedRequest(importedRequests[0], collectionId)
 
         setTabs((currentTabs) => [...currentTabs, nextTab])
-        setActiveTabId(nextTab.id)
+        activateTabById(nextTab.id)
       }
 
       setImportFeedback({
@@ -902,6 +919,59 @@ function App() {
     setLoadTestConfig((currentConfig) => ({ ...currentConfig, mode }))
   }
 
+  const applyResponseCaptures = (
+    tab: RequestTab,
+    responseBody: string,
+    envId: string | undefined,
+    envName: string | undefined,
+  ) => {
+    const rules = tab.responseCaptures ?? []
+    const hasActiveRules = rules.some(
+      (rule) =>
+        rule.enabled &&
+        rule.jsonPath.trim() !== '' &&
+        rule.variableName.trim() !== '',
+    )
+
+    if (!hasActiveRules) {
+      return
+    }
+
+    if (!envId) {
+      setCaptureFeedback('Nenhum ambiente selecionado; captura ignorada.')
+      return
+    }
+
+    const { updates, warnings } = computeCaptureUpdates(responseBody, rules)
+
+    if (updates.length > 0) {
+      setEnvironments((current) =>
+        current.map((environment) =>
+          environment.id === envId
+            ? applyCaptureUpdatesToEnvironment(environment, updates)
+            : environment,
+        ),
+      )
+    }
+
+    const parts: string[] = []
+    if (updates.length > 0) {
+      parts.push(
+        `Variáveis no ambiente “${envName ?? ''}”: ${updates.map((item) => item.name).join(', ')}.`,
+      )
+    }
+    if (warnings.length > 0) {
+      parts.push(warnings.join(' '))
+    }
+    if (parts.length > 0) {
+      setCaptureFeedback(parts.join(' '))
+    } else if (hasActiveRules) {
+      setCaptureFeedback(
+        'Nenhuma variável foi atualizada (confira os caminhos no JSON).',
+      )
+    }
+  }
+
   const sendRequest = async () => {
     if (!activeTab) {
       return
@@ -925,6 +995,7 @@ function App() {
         error: `Defina as variáveis antes de enviar: ${unresolvedVariables.join(', ')}`,
       }
 
+      setCaptureFeedback(null)
       setTabs((currentTabs) =>
         currentTabs.map((tab) =>
           tab.id === activeTab.id
@@ -939,12 +1010,35 @@ function App() {
       return
     }
 
+    setCaptureFeedback(null)
     updateActiveTab((tab) => ({ ...tab, isSending: true }))
 
     const payload = resolveRequestInput(requestInput, activeEnvironment)
 
     try {
       const response = await executeRequest(payload)
+      const hasActiveCaptureRules = (activeTab.responseCaptures ?? []).some(
+        (rule) =>
+          rule.enabled &&
+          rule.jsonPath.trim() !== '' &&
+          rule.variableName.trim() !== '',
+      )
+
+      if (
+        hasActiveCaptureRules &&
+        response.body &&
+        !response.error
+      ) {
+        // Captura dinâmica: a cada resposta sem erro de execução, relê o JSON e
+        // sobrescreve as variáveis do ambiente ativo conforme as regras da aba.
+        applyResponseCaptures(
+          activeTab,
+          response.body,
+          activeEnvironment?.id,
+          activeEnvironment?.name,
+        )
+      }
+
       const nextHistoryEntry = createHistoryEntry(
         activeTab,
         response,
@@ -1168,7 +1262,7 @@ function App() {
                   className={`tab-pill ${tab.id === activeTab?.id ? 'is-active' : ''}`}
                   key={tab.id}
                 >
-                  <button type="button" onClick={() => setActiveTabId(tab.id)}>
+                  <button type="button" onClick={() => activateTabById(tab.id)}>
                     {tab.name}
                   </button>
                   <span className="tab-pill__close">
@@ -1419,20 +1513,9 @@ function App() {
                                   {activeTab.response.status}{' '}
                                   {activeTab.response.statusText}
                                 </span>
-                                <span>{activeTab.response.durationMs} ms</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {activeTab.response ? (
-                            <div className="response-body">
-                              {activeTab.response.error && (
-                                <div className="response-error">
-                                  {activeTab.response.error}
-                                </div>
-                              )}
-
-                              <div className="response-actions">
+                                <span className="response-meta__duration">
+                                  {activeTab.response.durationMs} ms
+                                </span>
                                 <button
                                   className="ghost-button ghost-button--compact"
                                   type="button"
@@ -1446,6 +1529,29 @@ function App() {
                                   Limpar resposta
                                 </button>
                               </div>
+                            )}
+                          </div>
+
+                          {activeTab.response ? (
+                            <div className="response-body">
+                              {activeTab.response.error && (
+                                <div className="response-error">
+                                  {activeTab.response.error}
+                                </div>
+                              )}
+
+                              <ResponseCaptureEditor
+                                rules={activeTab.responseCaptures ?? []}
+                                variableOptions={[...variableNames]}
+                                disabled={activeTab.isSending}
+                                feedback={captureFeedback}
+                                onRulesChange={(rules) =>
+                                  updateActiveTab((tab) => ({
+                                    ...tab,
+                                    responseCaptures: rules,
+                                  }))
+                                }
+                              />
 
                               <div className="response-section">
                                 {activeTab.response.body ? (
@@ -1595,84 +1701,86 @@ function LoadTestEditor({
 
   return (
     <div className="stack gap-sm">
-      <div className="response-header">
-        <div>
-          <h2>Teste de carga</h2>
-          <p className="subtle">
-            Execute várias chamadas da request atual com concorrência controlada.
-            No modo por tempo a execução roda no servidor até o fim da janela (ou até
-            você cancelar).             No <strong>ramp-up</strong> a concorrência sobe até o valor
-            final e permanece lá. No <strong>Peak</strong> ela segue o relógio do teste:
-            nos <strong>primeiros</strong> segundos sobe do vale ao pico, permanece no
-            pico no meio e, nos <strong>últimos</strong> segundos que você definir, desce
-            de volta ao vale (abaixo você vê os segundos exatos na linha do tempo).
-          </p>
-        </div>
-        {showLive ? (
-          <button
-            className="ghost-button"
-            type="button"
-            onClick={onStop}
-          >
-            Parar carga
-          </button>
-        ) : (
-          <button
-            className="primary-button"
-            type="button"
-            onClick={onRun}
-            disabled={isRunning}
-          >
-            {isRunning ? 'Executando carga...' : 'Iniciar carga'}
-          </button>
-        )}
+      <div className="load-test-editor__top">
+        <h2 className="load-test-editor__heading">Teste de carga</h2>
+        <p className="subtle load-test-editor__intro">
+          Execute várias chamadas da request atual com concorrência controlada.
+          No modo por tempo a execução roda no servidor até o fim da janela (ou até
+          você cancelar). No <strong>ramp-up</strong> a concorrência sobe até o valor
+          final e permanece lá. No <strong>Peak</strong> ela segue o relógio do teste:
+          nos <strong>primeiros</strong> segundos sobe do vale ao pico, permanece no
+          pico no meio e, nos <strong>últimos</strong> segundos que você definir, desce
+          de volta ao vale (abaixo você vê os segundos exatos na linha do tempo).
+        </p>
       </div>
 
-      <div className="load-test-mode-toggle" role="tablist" aria-label="Modo do teste de carga">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={isDurationMode}
-          className={`load-test-mode-toggle__option ${isDurationMode ? 'is-active' : ''}`}
-          onClick={() => onModeChange('duration')}
-          disabled={isRunning}
-        >
-          <span>Por tempo</span>
-          <ClockIcon className="load-test-mode-toggle__icon" />
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={isRampUpMode}
-          className={`load-test-mode-toggle__option ${isRampUpMode ? 'is-active' : ''}`}
-          onClick={() => onModeChange('rampUp')}
-          disabled={isRunning}
-        >
-          <span>Ramp-up</span>
-          <RampUpIcon className="load-test-mode-toggle__icon" />
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={isPeakMode}
-          className={`load-test-mode-toggle__option ${isPeakMode ? 'is-active' : ''}`}
-          onClick={() => onModeChange('peak')}
-          disabled={isRunning}
-        >
-          <span>Peak</span>
-          <PeakIcon className="load-test-mode-toggle__icon" />
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={isCountMode}
-          className={`load-test-mode-toggle__option ${isCountMode ? 'is-active' : ''}`}
-          onClick={() => onModeChange('count')}
-          disabled={isRunning}
-        >
-          <span>Por nº de requests</span>
-          <PeopleIcon className="load-test-mode-toggle__icon" />
-        </button>
+      <div className="load-test-toolbar">
+        <div className="load-test-mode-toggle" role="tablist" aria-label="Modo do teste de carga">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isDurationMode}
+            className={`load-test-mode-toggle__option ${isDurationMode ? 'is-active' : ''}`}
+            onClick={() => onModeChange('duration')}
+            disabled={isRunning}
+          >
+            <span>Por tempo</span>
+            <ClockIcon className="load-test-mode-toggle__icon" />
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isRampUpMode}
+            className={`load-test-mode-toggle__option ${isRampUpMode ? 'is-active' : ''}`}
+            onClick={() => onModeChange('rampUp')}
+            disabled={isRunning}
+          >
+            <span>Ramp-up</span>
+            <RampUpIcon className="load-test-mode-toggle__icon" />
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isPeakMode}
+            className={`load-test-mode-toggle__option ${isPeakMode ? 'is-active' : ''}`}
+            onClick={() => onModeChange('peak')}
+            disabled={isRunning}
+          >
+            <span>Peak</span>
+            <PeakIcon className="load-test-mode-toggle__icon" />
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isCountMode}
+            className={`load-test-mode-toggle__option ${isCountMode ? 'is-active' : ''}`}
+            onClick={() => onModeChange('count')}
+            disabled={isRunning}
+          >
+            <span>Por nº de requests</span>
+            <PeopleIcon className="load-test-mode-toggle__icon" />
+          </button>
+        </div>
+        <div className="load-test-toolbar__run">
+          {showLive ? (
+            <button
+              className="ghost-button ghost-button--compact"
+              type="button"
+              onClick={onStop}
+            >
+              Parar carga
+            </button>
+          ) : (
+            <button
+              className="primary-button primary-button--compact"
+              type="button"
+              onClick={onRun}
+              disabled={isRunning}
+            >
+              {isRunning ? 'Executando carga...' : 'Iniciar carga'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="field-grid">
@@ -4232,6 +4340,14 @@ function hydrateTab(raw: RequestTab): RequestTab {
     isSending: false,
     collectionId: raw.collectionId,
     savedRequestId: raw.savedRequestId,
+    responseCaptures:
+      raw.responseCaptures?.map((rule) => ({
+        id: rule.id ?? crypto.randomUUID(),
+        enabled: rule.enabled ?? true,
+        jsonPath: typeof rule.jsonPath === 'string' ? rule.jsonPath : '',
+        variableName:
+          typeof rule.variableName === 'string' ? rule.variableName : '',
+      })) ?? [],
   }
 }
 

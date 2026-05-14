@@ -26,6 +26,16 @@ export type RequestBody =
   | { mode: 'text'; content: string }
   | { mode: 'form'; entries: KeyValueRow[] }
 
+/** Mapeia um campo do JSON da resposta para uma variável do ambiente ativo. */
+export type ResponseCaptureRule = {
+  id: string
+  enabled: boolean
+  /** Caminho a partir da raiz, ex.: `access_token`, `data.token`, `items.0.id`. */
+  jsonPath: string
+  /** Nome da variável no ambiente (cria a linha se ainda não existir). */
+  variableName: string
+}
+
 export type RequestResponse = {
   ok: boolean
   status: number
@@ -50,6 +60,8 @@ export type RequestTab = {
   isSending?: boolean
   collectionId?: string
   savedRequestId?: string
+  /** Regras aplicadas após envio bem-sucedido (body JSON) ao ambiente ativo. */
+  responseCaptures?: ResponseCaptureRule[]
 }
 
 export type EnvironmentColor =
