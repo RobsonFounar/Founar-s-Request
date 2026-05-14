@@ -96,13 +96,33 @@ export type ExecuteRequestInput = Pick<
   'method' | 'url' | 'headers' | 'queryParams' | 'auth' | 'body'
 >
 
-export type LoadTestMode = 'count' | 'duration'
+export type LoadTestMode = 'count' | 'duration' | 'rampUp' | 'peak'
 
 export type LoadTestConfig = {
   mode: LoadTestMode
   totalRequests: number
   durationSeconds: number
   concurrency: number
+  /**
+   * Ramp-up: concorrência inicial. Peak: concorrência no vale (início e fim da curva).
+   */
+  rampStartConcurrency: number
+  /**
+   * No ramp-up: segundos em que a concorrência sobe do inicial ao final.
+   * Deve ser ≤ durationSeconds (duração total do teste).
+   */
+  rampDurationSeconds: number
+  /**
+   * Peak: segundos para subir do vale à concorrência no pico (`concurrency`).
+   * Com `peakDescendSeconds`, a soma deve ser ≤ `durationSeconds`.
+   */
+  peakAscendSeconds: number
+  /**
+   * Peak: segundos no **final** da janela em que a concorrência desce do pico ao vale.
+   * A descida **começa** no segundo `durationSeconds - peakDescendSeconds` (ex.: 60s
+   * totais e 10s de descida → começa no segundo 50).
+   */
+  peakDescendSeconds: number
 }
 
 export type LoadTestSample = {
@@ -132,6 +152,10 @@ export type LoadTestResult = {
   totalRequests: number
   concurrency: number
   durationSeconds?: number
+  rampStartConcurrency?: number
+  rampDurationSeconds?: number
+  peakAscendSeconds?: number
+  peakDescendSeconds?: number
   successfulRequests: number
   failedRequests: number
   totalDurationMs: number

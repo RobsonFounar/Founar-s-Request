@@ -31,7 +31,7 @@ type ExecuteRequestInput = {
   body: RequestBody
 }
 
-type LoadTestMode = 'count' | 'duration'
+type LoadTestMode = 'count' | 'duration' | 'rampUp' | 'peak'
 
 type LoadTestInput = {
   request: ExecuteRequestInput
@@ -39,6 +39,10 @@ type LoadTestInput = {
   totalRequests?: number
   durationSeconds?: number
   concurrency: number
+  rampStartConcurrency?: number
+  rampDurationSeconds?: number
+  peakAscendSeconds?: number
+  peakDescendSeconds?: number
 }
 
 type LoadTestSample = {
@@ -92,7 +96,14 @@ app.post('/api/requests/execute', async (req, res) => {
 app.post('/api/load-tests/run', async (req, res) => {
   const input = req.body as LoadTestInput
   const concurrency = Number(input?.concurrency)
-  const mode: LoadTestMode = input.mode === 'duration' ? 'duration' : 'count'
+  const mode: LoadTestMode =
+    input.mode === 'duration'
+      ? 'duration'
+      : input.mode === 'rampUp'
+        ? 'rampUp'
+        : input.mode === 'peak'
+          ? 'peak'
+          : 'count'
 
   if (!input?.request?.url) {
     res.status(400).json({
@@ -110,6 +121,10 @@ app.post('/api/load-tests/run', async (req, res) => {
 
   let totalRequests = 0
   let durationSeconds = 0
+  let rampStartConcurrency = 1
+  let rampDurationSeconds = 0
+  let peakAscendSeconds = 0
+  let peakDescendSeconds = 0
 
   if (mode === 'count') {
     totalRequests = Number(input?.totalRequests)
@@ -130,6 +145,72 @@ app.post('/api/load-tests/run', async (req, res) => {
     ) {
       res.status(400).json({
         error: `Defina uma duração entre ${LOAD_TEST_MIN_DURATION_SECONDS} e ${LOAD_TEST_MAX_DURATION_SECONDS} segundos.`,
+      })
+      return
+    }
+  }
+
+  if (mode === 'rampUp' || mode === 'peak') {
+    rampStartConcurrency = Number(
+      input.rampStartConcurrency != null ? input.rampStartConcurrency : 1,
+    )
+    if (
+      !Number.isInteger(rampStartConcurrency) ||
+      rampStartConcurrency < 1 ||
+      rampStartConcurrency > 50
+    ) {
+      res.status(400).json({
+        error:
+          mode === 'peak'
+            ? 'Concorrência no vale (Peak) deve ser um inteiro entre 1 e 50.'
+            : 'Concorrência inicial do ramp deve ser um inteiro entre 1 e 50.',
+      })
+      return
+    }
+    if (rampStartConcurrency > concurrency) {
+      res.status(400).json({
+        error:
+          mode === 'peak'
+            ? 'Concorrência no vale não pode ser maior que a concorrência no pico.'
+            : 'Concorrência inicial do ramp não pode ser maior que a concorrência final.',
+      })
+      return
+    }
+  }
+
+  if (mode === 'rampUp') {
+    rampDurationSeconds = Number(
+      input.rampDurationSeconds != null ? input.rampDurationSeconds : durationSeconds,
+    )
+    if (
+      !Number.isInteger(rampDurationSeconds) ||
+      rampDurationSeconds < LOAD_TEST_MIN_DURATION_SECONDS ||
+      rampDurationSeconds > durationSeconds
+    ) {
+      res.status(400).json({
+        error: `Defina o tempo de subida do ramp entre ${LOAD_TEST_MIN_DURATION_SECONDS} e a duração total do teste (${durationSeconds}s).`,
+      })
+      return
+    }
+  }
+
+  if (mode === 'peak') {
+    peakAscendSeconds = Number(input.peakAscendSeconds ?? 0)
+    peakDescendSeconds = Number(input.peakDescendSeconds ?? 0)
+    if (
+      !Number.isInteger(peakAscendSeconds) ||
+      !Number.isInteger(peakDescendSeconds) ||
+      peakAscendSeconds < LOAD_TEST_MIN_DURATION_SECONDS ||
+      peakDescendSeconds < LOAD_TEST_MIN_DURATION_SECONDS
+    ) {
+      res.status(400).json({
+        error: `No Peak, defina subida e descida com pelo menos ${LOAD_TEST_MIN_DURATION_SECONDS}s cada (inteiros).`,
+      })
+      return
+    }
+    if (peakAscendSeconds + peakDescendSeconds > durationSeconds) {
+      res.status(400).json({
+        error: `No Peak, a soma da subida (${peakAscendSeconds}s) e da descida (${peakDescendSeconds}s) não pode ultrapassar a duração total (${durationSeconds}s).`,
       })
       return
     }
@@ -216,6 +297,122 @@ app.post('/api/load-tests/run', async (req, res) => {
       })
 
       await Promise.all(workers)
+    } else if (mode === 'rampUp') {
+      const suiteEnd = suiteStartedAt + durationSeconds * 1000
+      const rampMs = rampDurationSeconds * 1000
+      const rampEnd = suiteStartedAt + rampMs
+      const rampTarget = concurrency
+      const rampStart = rampStartConcurrency
+      const workers: Promise<void>[] = []
+      let started = 0
+
+      const workerLoop = async () => {
+        while (!aborted && Date.now() < suiteEnd) {
+          const currentIndex = nextRequestIndex
+          nextRequestIndex += 1
+          const requestStartedAt = Date.now()
+          const result = await executeHttpRequest(input.request)
+
+          recordSample({
+            index: currentIndex,
+            elapsedMs: requestStartedAt - suiteStartedAt,
+            durationMs: result.durationMs,
+            ok: result.ok && !result.error,
+            status: result.status,
+            error: result.error,
+          })
+        }
+      }
+
+      while (Date.now() < suiteEnd && !aborted) {
+        const now = Date.now()
+        if (now < rampEnd) {
+          const elapsed = now - suiteStartedAt
+          const progress = Math.min(1, elapsed / rampMs)
+          const desired = Math.round(
+            rampStart + (rampTarget - rampStart) * progress,
+          )
+          const clampedDesired = Math.min(rampTarget, Math.max(rampStart, desired))
+          while (started < clampedDesired) {
+            workers.push(workerLoop())
+            started += 1
+          }
+        } else {
+          while (started < rampTarget) {
+            workers.push(workerLoop())
+            started += 1
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+
+      await Promise.all(workers)
+    } else if (mode === 'peak') {
+      const suiteEnd = suiteStartedAt + durationSeconds * 1000
+      const peakMax = concurrency
+      const peakValley = rampStartConcurrency
+      const ascendMs = peakAscendSeconds * 1000
+      const descendMs = peakDescendSeconds * 1000
+
+      const desiredPeakCap = (now: number): number => {
+        if (now >= suiteEnd) {
+          return peakValley
+        }
+        const ascendEnd = suiteStartedAt + ascendMs
+        const descendStart = suiteEnd - descendMs
+
+        if (now < ascendEnd) {
+          const p = Math.min(1, (now - suiteStartedAt) / ascendMs)
+          return Math.min(
+            peakMax,
+            Math.max(peakValley, Math.round(peakValley + (peakMax - peakValley) * p)),
+          )
+        }
+        if (now < descendStart) {
+          return peakMax
+        }
+        const p = Math.min(1, (now - descendStart) / descendMs)
+        return Math.min(
+          peakMax,
+          Math.max(peakValley, Math.round(peakMax + (peakValley - peakMax) * p)),
+        )
+      }
+
+      const capState = { value: peakValley }
+
+      const workerLoop = (workerId: number) => async () => {
+        while (!aborted && Date.now() < suiteEnd) {
+          if (workerId >= capState.value) {
+            await new Promise((resolve) => setTimeout(resolve, 50))
+            continue
+          }
+
+          const currentIndex = nextRequestIndex
+          nextRequestIndex += 1
+          const requestStartedAt = Date.now()
+          const result = await executeHttpRequest(input.request)
+
+          recordSample({
+            index: currentIndex,
+            elapsedMs: requestStartedAt - suiteStartedAt,
+            durationMs: result.durationMs,
+            ok: result.ok && !result.error,
+            status: result.status,
+            error: result.error,
+          })
+        }
+      }
+
+      const peakWorkers = Array.from({ length: peakMax }, (_, workerId) =>
+        workerLoop(workerId)(),
+      )
+
+      while (Date.now() < suiteEnd && !aborted) {
+        capState.value = desiredPeakCap(Date.now())
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+
+      await Promise.all(peakWorkers)
     } else {
       const durationMs = durationSeconds * 1000
       const workerCount = Math.min(concurrency, 50)
@@ -270,7 +467,15 @@ app.post('/api/load-tests/run', async (req, res) => {
     startedAt,
     totalRequests: samples.length,
     concurrency,
-    durationSeconds: mode === 'duration' ? durationSeconds : undefined,
+    durationSeconds:
+      mode === 'duration' || mode === 'rampUp' || mode === 'peak'
+        ? durationSeconds
+        : undefined,
+    rampStartConcurrency:
+      mode === 'rampUp' || mode === 'peak' ? rampStartConcurrency : undefined,
+    rampDurationSeconds: mode === 'rampUp' ? rampDurationSeconds : undefined,
+    peakAscendSeconds: mode === 'peak' ? peakAscendSeconds : undefined,
+    peakDescendSeconds: mode === 'peak' ? peakDescendSeconds : undefined,
     successfulRequests,
     failedRequests,
     totalDurationMs,

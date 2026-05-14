@@ -73,6 +73,10 @@ const DEFAULT_LOAD_TEST_CONFIG: LoadTestConfig = {
   totalRequests: 20,
   durationSeconds: 30,
   concurrency: 5,
+  rampStartConcurrency: 1,
+  rampDurationSeconds: 20,
+  peakAscendSeconds: 10,
+  peakDescendSeconds: 10,
 }
 const LOAD_TEST_MIN_DURATION_SECONDS = 1
 const LOAD_TEST_MAX_DURATION_SECONDS = 600
@@ -780,21 +784,109 @@ function App() {
   }
 
   const updateLoadTestConfig = (
-    key: 'totalRequests' | 'durationSeconds' | 'concurrency',
+    key:
+      | 'totalRequests'
+      | 'durationSeconds'
+      | 'concurrency'
+      | 'rampStartConcurrency'
+      | 'rampDurationSeconds'
+      | 'peakAscendSeconds'
+      | 'peakDescendSeconds',
     value: number,
   ) => {
     setLoadTestConfig((currentConfig) => {
       if (key === 'concurrency') {
-        return { ...currentConfig, concurrency: clampNumber(value, 1, 50) }
+        const next = clampNumber(value, 1, 50)
+        return {
+          ...currentConfig,
+          concurrency: next,
+          rampStartConcurrency: Math.min(currentConfig.rampStartConcurrency, next),
+        }
+      }
+
+      if (key === 'rampStartConcurrency') {
+        return {
+          ...currentConfig,
+          rampStartConcurrency: clampNumber(
+            value,
+            1,
+            Math.min(50, currentConfig.concurrency),
+          ),
+        }
       }
 
       if (key === 'durationSeconds') {
+        const nextDuration = clampNumber(
+          value,
+          LOAD_TEST_MIN_DURATION_SECONDS,
+          LOAD_TEST_MAX_DURATION_SECONDS,
+        )
+        let peakAscendSeconds = currentConfig.peakAscendSeconds
+        let peakDescendSeconds = currentConfig.peakDescendSeconds
+        if (currentConfig.mode === 'peak') {
+          if (peakAscendSeconds + peakDescendSeconds > nextDuration) {
+            const sum = peakAscendSeconds + peakDescendSeconds
+            peakAscendSeconds = Math.max(
+              LOAD_TEST_MIN_DURATION_SECONDS,
+              Math.floor((peakAscendSeconds / sum) * nextDuration),
+            )
+            peakDescendSeconds = nextDuration - peakAscendSeconds
+            if (peakDescendSeconds < LOAD_TEST_MIN_DURATION_SECONDS) {
+              peakDescendSeconds = LOAD_TEST_MIN_DURATION_SECONDS
+              peakAscendSeconds = nextDuration - peakDescendSeconds
+            }
+          }
+        }
         return {
           ...currentConfig,
-          durationSeconds: clampNumber(
+          durationSeconds: nextDuration,
+          rampDurationSeconds: Math.min(
+            currentConfig.rampDurationSeconds,
+            nextDuration,
+          ),
+          ...(currentConfig.mode === 'peak'
+            ? { peakAscendSeconds, peakDescendSeconds }
+            : {}),
+        }
+      }
+
+      if (key === 'rampDurationSeconds') {
+        return {
+          ...currentConfig,
+          rampDurationSeconds: clampNumber(
             value,
             LOAD_TEST_MIN_DURATION_SECONDS,
-            LOAD_TEST_MAX_DURATION_SECONDS,
+            Math.min(LOAD_TEST_MAX_DURATION_SECONDS, currentConfig.durationSeconds),
+          ),
+        }
+      }
+
+      if (key === 'peakAscendSeconds') {
+        const maxAscend = Math.max(
+          LOAD_TEST_MIN_DURATION_SECONDS,
+          currentConfig.durationSeconds - currentConfig.peakDescendSeconds,
+        )
+        return {
+          ...currentConfig,
+          peakAscendSeconds: clampNumber(
+            value,
+            LOAD_TEST_MIN_DURATION_SECONDS,
+            maxAscend,
+          ),
+        }
+      }
+
+      if (key === 'peakDescendSeconds') {
+        const maxDescend = Math.max(
+          LOAD_TEST_MIN_DURATION_SECONDS,
+          currentConfig.durationSeconds - currentConfig.peakAscendSeconds,
+        )
+        return {
+          ...currentConfig,
+          peakDescendSeconds: clampNumber(
+            value,
+            LOAD_TEST_MIN_DURATION_SECONDS,
+            maxDescend,
           ),
         }
       }
@@ -1430,7 +1522,14 @@ type LoadTestEditorProps = {
   onRun: () => void
   onStop: () => void
   onChange: (
-    key: 'totalRequests' | 'durationSeconds' | 'concurrency',
+    key:
+      | 'totalRequests'
+      | 'durationSeconds'
+      | 'concurrency'
+      | 'rampStartConcurrency'
+      | 'rampDurationSeconds'
+      | 'peakAscendSeconds'
+      | 'peakDescendSeconds',
     value: number,
   ) => void
   onModeChange: (mode: LoadTestMode) => void
@@ -1438,6 +1537,11 @@ type LoadTestEditorProps = {
   logs: LoadTestLogEntry[]
 }
 
+/**
+ * Lembrete (produto / UX): revisar o teste de carga como um todo — modos (por tempo,
+ * ramp-up, Peak, por nº de requests), rótulos, ordem dos campos e textos de ajuda —
+ * para deixá-lo mais simples e compreensível para usuários finais.
+ */
 function LoadTestEditor({
   config,
   result,
@@ -1451,8 +1555,11 @@ function LoadTestEditor({
   logs,
 }: LoadTestEditorProps) {
   const isDurationMode = config.mode === 'duration'
+  const isRampUpMode = config.mode === 'rampUp'
+  const isPeakMode = config.mode === 'peak'
+  const isCountMode = config.mode === 'count'
   const targetDurationMs = config.durationSeconds * 1000
-  const showLive = isRunning && isDurationMode
+  const showLive = isRunning && (isDurationMode || isRampUpMode || isPeakMode)
   const liveProgress =
     showLive && targetDurationMs > 0
       ? Math.min(100, (elapsedMs / targetDurationMs) * 100)
@@ -1469,6 +1576,23 @@ function LoadTestEditor({
   const totalRequests = totalSuccess + totalFailure
   const successRatio = totalRequests > 0 ? totalSuccess / totalRequests : 0
 
+  const peakTimelineSummary =
+    isPeakMode
+      ? {
+          total: config.durationSeconds,
+          ascend: config.peakAscendSeconds,
+          descend: config.peakDescendSeconds,
+          descendStartsAt:
+            config.durationSeconds - config.peakDescendSeconds,
+          plateauSeconds: Math.max(
+            0,
+            config.durationSeconds -
+              config.peakAscendSeconds -
+              config.peakDescendSeconds,
+          ),
+        }
+      : null
+
   return (
     <div className="stack gap-sm">
       <div className="response-header">
@@ -1477,7 +1601,11 @@ function LoadTestEditor({
           <p className="subtle">
             Execute várias chamadas da request atual com concorrência controlada.
             No modo por tempo a execução roda no servidor até o fim da janela (ou até
-            você cancelar).
+            você cancelar).             No <strong>ramp-up</strong> a concorrência sobe até o valor
+            final e permanece lá. No <strong>Peak</strong> ela segue o relógio do teste:
+            nos <strong>primeiros</strong> segundos sobe do vale ao pico, permanece no
+            pico no meio e, nos <strong>últimos</strong> segundos que você definir, desce
+            de volta ao vale (abaixo você vê os segundos exatos na linha do tempo).
           </p>
         </div>
         {showLive ? (
@@ -1515,8 +1643,30 @@ function LoadTestEditor({
         <button
           type="button"
           role="tab"
-          aria-selected={!isDurationMode}
-          className={`load-test-mode-toggle__option ${!isDurationMode ? 'is-active' : ''}`}
+          aria-selected={isRampUpMode}
+          className={`load-test-mode-toggle__option ${isRampUpMode ? 'is-active' : ''}`}
+          onClick={() => onModeChange('rampUp')}
+          disabled={isRunning}
+        >
+          <span>Ramp-up</span>
+          <RampUpIcon className="load-test-mode-toggle__icon" />
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={isPeakMode}
+          className={`load-test-mode-toggle__option ${isPeakMode ? 'is-active' : ''}`}
+          onClick={() => onModeChange('peak')}
+          disabled={isRunning}
+        >
+          <span>Peak</span>
+          <PeakIcon className="load-test-mode-toggle__icon" />
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={isCountMode}
+          className={`load-test-mode-toggle__option ${isCountMode ? 'is-active' : ''}`}
           onClick={() => onModeChange('count')}
           disabled={isRunning}
         >
@@ -1526,7 +1676,228 @@ function LoadTestEditor({
       </div>
 
       <div className="field-grid">
-        {isDurationMode ? (
+        {isRampUpMode ? (
+          <>
+            <label className="field field--full">
+              <span>Duração total do teste (segundos)</span>
+              <input
+                type="number"
+                min={LOAD_TEST_MIN_DURATION_SECONDS}
+                max={LOAD_TEST_MAX_DURATION_SECONDS}
+                value={config.durationSeconds}
+                onChange={(event) =>
+                  onChange('durationSeconds', Number(event.target.value || 0))
+                }
+                disabled={isRunning}
+              />
+            </label>
+            <label className="field field--full">
+              <span>Tempo de subida do ramp (segundos)</span>
+              <input
+                type="number"
+                min={LOAD_TEST_MIN_DURATION_SECONDS}
+                max={config.durationSeconds}
+                value={config.rampDurationSeconds}
+                onChange={(event) =>
+                  onChange('rampDurationSeconds', Number(event.target.value || 0))
+                }
+                disabled={isRunning}
+              />
+            </label>
+            <label className="field">
+              <span>Concorrência inicial</span>
+              <input
+                type="number"
+                min={1}
+                max={Math.min(50, config.concurrency)}
+                value={config.rampStartConcurrency}
+                onChange={(event) =>
+                  onChange('rampStartConcurrency', Number(event.target.value || 0))
+                }
+                disabled={isRunning}
+              />
+            </label>
+            <label className="field">
+              <span>Concorrência final</span>
+              <input
+                type="number"
+                min={Math.max(1, config.rampStartConcurrency)}
+                max={50}
+                value={config.concurrency}
+                onChange={(event) =>
+                  onChange('concurrency', Number(event.target.value || 0))
+                }
+                disabled={isRunning}
+              />
+            </label>
+          </>
+        ) : isPeakMode ? (
+          <div className="field field--full load-test-peak">
+            <label className="load-test-peak__block">
+              <span className="load-test-peak__block-label">Duração total do teste</span>
+              <span className="load-test-peak__block-hint subtle">em segundos</span>
+              <input
+                type="number"
+                min={LOAD_TEST_MIN_DURATION_SECONDS}
+                max={LOAD_TEST_MAX_DURATION_SECONDS}
+                value={config.durationSeconds}
+                onChange={(event) =>
+                  onChange('durationSeconds', Number(event.target.value || 0))
+                }
+                disabled={isRunning}
+              />
+            </label>
+
+            {peakTimelineSummary ? (
+              <div
+                className="load-test-peak__timeline"
+                aria-label="Resumo do Peak na linha do tempo"
+              >
+                <p className="load-test-peak__timeline-intro">
+                  <strong>
+                    Simulação de como os tempos de subida e descida do pico vão ficar.
+                  </strong>
+                </p>
+                <strong className="load-test-peak__timeline-title">
+                  Na linha do tempo (com os valores atuais)
+                </strong>
+                <ul className="load-test-peak__timeline-list">
+                  <li>
+                    <strong>Duração total:</strong> {peakTimelineSummary.total}s (do
+                    segundo <strong>0</strong> ao <strong>{peakTimelineSummary.total}</strong>
+                    ).
+                  </li>
+                  <li>
+                    <strong>Subida:</strong> {peakTimelineSummary.ascend}s (vale → pico)
+                    — entre o segundo <strong>0</strong> e o{' '}
+                    <strong>{peakTimelineSummary.ascend}</strong>.
+                  </li>
+                  <li>
+                    <strong>No pico:</strong>{' '}
+                    {peakTimelineSummary.plateauSeconds > 0 ? (
+                      <>
+                        entre o segundo <strong>{peakTimelineSummary.ascend}</strong> e o{' '}
+                        <strong>{peakTimelineSummary.descendStartsAt}</strong> (
+                        {peakTimelineSummary.plateauSeconds}s no máximo).
+                      </>
+                    ) : (
+                      <>
+                        sem planalto extra (a subida encontra a descida no segundo{' '}
+                        <strong>{peakTimelineSummary.ascend}</strong>).
+                      </>
+                    )}
+                  </li>
+                  <li>
+                    <strong>Descida:</strong> {peakTimelineSummary.descend}s (pico →
+                    vale) — <strong>a partir do segundo {peakTimelineSummary.descendStartsAt}</strong>{' '}
+                    até o <strong>{peakTimelineSummary.total}</strong> (são os últimos{' '}
+                    {peakTimelineSummary.descend}s da janela; nesse trecho a concorrência
+                    volta ao vale).
+                  </li>
+                </ul>
+              </div>
+            ) : null}
+
+            <div className="load-test-peak__timings" aria-label="Tempos do perfil Peak">
+              <div className="load-test-peak__timing-label">
+                <span className="load-test-peak__timing-title">Subida (vale → pico)</span>
+                <span className="load-test-peak__timing-desc subtle">
+                  Quantos segundos no <strong>início</strong> do teste (a partir do segundo
+                  0)
+                </span>
+              </div>
+              <input
+                className="load-test-peak__timing-input"
+                type="number"
+                min={LOAD_TEST_MIN_DURATION_SECONDS}
+                max={Math.max(
+                  LOAD_TEST_MIN_DURATION_SECONDS,
+                  config.durationSeconds - config.peakDescendSeconds,
+                )}
+                value={config.peakAscendSeconds}
+                onChange={(event) =>
+                  onChange('peakAscendSeconds', Number(event.target.value || 0))
+                }
+                disabled={isRunning}
+                aria-label="Segundos no começo para subir do vale ao pico"
+              />
+
+              <div className="load-test-peak__timing-label">
+                <span className="load-test-peak__timing-title">Descida (pico → vale)</span>
+                <span className="load-test-peak__timing-desc subtle">
+                  Quantos segundos no <strong>final</strong> do teste (a descida começa no
+                  segundo{' '}
+                  <strong>
+                    {config.durationSeconds - config.peakDescendSeconds}
+                  </strong>
+                  )
+                </span>
+              </div>
+              <input
+                className="load-test-peak__timing-input"
+                type="number"
+                min={LOAD_TEST_MIN_DURATION_SECONDS}
+                max={Math.max(
+                  LOAD_TEST_MIN_DURATION_SECONDS,
+                  config.durationSeconds - config.peakAscendSeconds,
+                )}
+                value={config.peakDescendSeconds}
+                onChange={(event) =>
+                  onChange('peakDescendSeconds', Number(event.target.value || 0))
+                }
+                disabled={isRunning}
+                aria-label="Segundos no final do teste para descer do pico ao vale"
+              />
+            </div>
+
+            <div className="load-test-peak__plateau subtle">
+              <span className="load-test-peak__plateau-label">Meio: tempo no pico</span>
+              <span className="load-test-peak__plateau-value">
+                {Math.max(
+                  0,
+                  config.durationSeconds -
+                    config.peakAscendSeconds -
+                    config.peakDescendSeconds,
+                )}
+                s
+              </span>
+              <span className="load-test-peak__plateau-note">
+                (duração total − começo − final)
+              </span>
+            </div>
+
+            <div className="load-test-peak__levels">
+              <label className="load-test-peak__block load-test-peak__block--half">
+                <span className="load-test-peak__block-label">Concorrência no vale</span>
+                <span className="load-test-peak__block-hint subtle">início e fim do teste</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.min(50, config.concurrency)}
+                  value={config.rampStartConcurrency}
+                  onChange={(event) =>
+                    onChange('rampStartConcurrency', Number(event.target.value || 0))
+                  }
+                  disabled={isRunning}
+                />
+              </label>
+              <label className="load-test-peak__block load-test-peak__block--half">
+                <span className="load-test-peak__block-label">Concorrência no pico</span>
+                <span className="load-test-peak__block-hint subtle">máximo no meio</span>
+                <input
+                  type="number"
+                  min={Math.max(1, config.rampStartConcurrency)}
+                  max={50}
+                  value={config.concurrency}
+                  onChange={(event) =>
+                    onChange('concurrency', Number(event.target.value || 0))
+                  }
+                  disabled={isRunning}
+                />
+              </label>
+            </div>
+          </div>
+        ) : isDurationMode ? (
           <label className="field">
             <span>Duração (segundos)</span>
             <input
@@ -1556,19 +1927,21 @@ function LoadTestEditor({
           </label>
         )}
 
-        <label className="field">
-          <span>Concorrência</span>
-          <input
-            type="number"
-            min={1}
-            max={50}
-            value={config.concurrency}
-            onChange={(event) =>
-              onChange('concurrency', Number(event.target.value || 0))
-            }
-            disabled={isRunning}
-          />
-        </label>
+        {!isRampUpMode && !isPeakMode ? (
+          <label className="field">
+            <span>Concorrência</span>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={config.concurrency}
+              onChange={(event) =>
+                onChange('concurrency', Number(event.target.value || 0))
+              }
+              disabled={isRunning}
+            />
+          </label>
+        ) : null}
       </div>
 
       <p className="subtle helper-text">
@@ -1601,9 +1974,26 @@ function LoadTestEditor({
             />
           </div>
           <p className="subtle load-test-live__hint">
-            As métricas e os gráficos são atualizados quando o servidor concluir o
-            teste. Use &quot;Parar carga&quot; para cancelar (encerra a conexão e o
-            servidor para de agendar novas requests).
+            {isRampUpMode ? (
+              <>
+                Ramp-up no servidor: a concorrência sobe ao longo do tempo de subida
+                configurado e permanece no valor final até o fim da duração total.
+                Métricas e gráficos aparecem ao concluir. Use &quot;Parar carga&quot; para
+                cancelar.
+              </>
+            ) : isPeakMode ? (
+              <>
+                Peak no servidor: curva vale → pico → vale conforme os segundos do quadro
+                acima; workers extras aguardam quando o limite cai. Métricas e gráficos
+                aparecem ao concluir. Use &quot;Parar carga&quot; para cancelar.
+              </>
+            ) : (
+              <>
+                As métricas e os gráficos são atualizados quando o servidor concluir o
+                teste. Use &quot;Parar carga&quot; para cancelar (encerra a conexão e o
+                servidor para de agendar novas requests).
+              </>
+            )}
           </p>
         </div>
       )}
@@ -1634,6 +2024,10 @@ function LoadTestEditor({
 
           <div className="load-test-chart-card load-test-chart-card--wide">
             <h3>Throughput ao longo do tempo</h3>
+            <p className="subtle load-test-chart-subtitle">
+              Quantas requisições do teste <strong>já retornaram</strong> em cada
+              fatia do tempo (não é latência nem banda).
+            </p>
             {chartHasData ? (
               <ThroughputChart
                 samples={chartSamples}
@@ -1691,6 +2085,40 @@ function LoadTestEditor({
               <span className="metric-card__label">Executado em</span>
               <strong>{formatDate(result.startedAt)}</strong>
             </div>
+            {result.mode === 'rampUp' &&
+            result.rampStartConcurrency != null &&
+            result.durationSeconds != null ? (
+              <div className="metric-inline field--full">
+                <span className="metric-card__label">Ramp-up</span>
+                <strong>
+                  {result.rampStartConcurrency} → {result.concurrency}; subida em{' '}
+                  {result.rampDurationSeconds ?? result.durationSeconds}s; teste total{' '}
+                  {result.durationSeconds}s
+                </strong>
+              </div>
+            ) : null}
+            {result.mode === 'peak' &&
+            result.rampStartConcurrency != null &&
+            result.durationSeconds != null &&
+            result.peakAscendSeconds != null &&
+            result.peakDescendSeconds != null ? (
+              <div className="metric-inline field--full">
+                <span className="metric-card__label">Peak</span>
+                <strong>
+                  {result.peakAscendSeconds}s no início (vale {result.rampStartConcurrency}{' '}
+                  → pico {result.concurrency}), depois{' '}
+                  {Math.max(
+                    0,
+                    result.durationSeconds -
+                      result.peakAscendSeconds -
+                      result.peakDescendSeconds,
+                  )}
+                  s no pico, por último {result.peakDescendSeconds}s no final (pico{' '}
+                  {result.concurrency} → vale {result.rampStartConcurrency}); total{' '}
+                  {result.durationSeconds}s
+                </strong>
+              </div>
+            ) : null}
           </div>
 
           <div className="response-section">
@@ -1770,6 +2198,50 @@ function PeopleIcon({ className }: IconProps) {
       <path d="M2.6 19c.6-2.8 3.2-4.6 6.4-4.6s5.8 1.8 6.4 4.6" />
       <circle cx="17" cy="9" r="2.6" />
       <path d="M15.8 14.6c2.6.4 4.6 2 5.2 4.4" />
+    </svg>
+  )
+}
+
+function RampUpIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M4 18V6" />
+      <path d="M4 18h4" />
+      <path d="M8 14V9" />
+      <path d="M8 14h4" />
+      <path d="M12 11V4" />
+      <path d="M12 11h4" />
+      <path d="M16 8v10" />
+      <path d="M16 18h4" />
+    </svg>
+  )
+}
+
+function PeakIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M3 18h18" />
+      <path d="M5 18 9 10l3 5 4-8 3 11" />
     </svg>
   )
 }
@@ -1863,7 +2335,7 @@ type ThroughputChartProps = {
 function ThroughputChart({ samples, elapsedMs }: ThroughputChartProps) {
   const width = 520
   const height = 160
-  const padding = { top: 12, right: 12, bottom: 22, left: 28 }
+  const padding = { top: 12, right: 12, bottom: 22, left: 36 }
   const innerWidth = width - padding.left - padding.right
   const innerHeight = height - padding.top - padding.bottom
 
@@ -1893,14 +2365,24 @@ function ThroughputChart({ samples, elapsedMs }: ThroughputChartProps) {
     ...buckets.map((bucket) => bucket.success + bucket.failure),
   )
   const barWidth = innerWidth / bucketCount
+  const intervalPhrase = formatBucketIntervalPhrase(bucketMs)
+  const ariaThroughput = `Throughput do teste de carga: cada coluna agrupa respostas finalizadas em cerca de ${intervalPhrase}; altura até ${maxValue} requisições completadas na faixa mais ocupada. Verde: sucesso; vermelho: falha.`
 
   return (
-    <svg
-      className="load-test-throughput"
-      viewBox={`0 0 ${width} ${height}`}
-      role="img"
-      aria-label="Throughput de requests ao longo do tempo, por segundo"
-    >
+    <div className="load-test-throughput-wrap">
+      <svg
+        className="load-test-throughput"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={ariaThroughput}
+      >
+        <text
+          className="load-test-throughput__y-label"
+          transform={`translate(14, ${padding.top + innerHeight / 2}) rotate(-90)`}
+          textAnchor="middle"
+        >
+          Req. na faixa
+        </text>
       <line
         x1={padding.left}
         y1={padding.top + innerHeight}
@@ -1964,6 +2446,7 @@ function ThroughputChart({ samples, elapsedMs }: ThroughputChartProps) {
 
         return (
           <g key={`bucket-${index}`}>
+            <title>{formatThroughputBucketTooltip(bucket, index, bucketMs)}</title>
             {bucket.success > 0 && (
               <rect
                 x={x + gap / 2}
@@ -1984,10 +2467,24 @@ function ThroughputChart({ samples, elapsedMs }: ThroughputChartProps) {
                 rx={1.5}
               />
             )}
+            <rect
+              x={x + gap / 2}
+              y={padding.top}
+              width={Math.max(1, barWidth - gap)}
+              height={innerHeight}
+              fill="transparent"
+              pointerEvents="all"
+            />
           </g>
         )
       })}
-    </svg>
+      </svg>
+      <p className="subtle load-test-throughput-caption">
+        Cada coluna ≈ <strong>{intervalPhrase}</strong> no eixo do teste. A altura
+        é quantas requisições HTTP <strong>terminaram</strong> naquele trecho
+        (verde = sucesso, vermelho = falha).
+      </p>
+    </div>
   )
 }
 
@@ -2104,6 +2601,47 @@ function formatDuration(ms: number) {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = Math.round(totalSeconds - minutes * 60)
   return `${minutes}m ${seconds}s`
+}
+
+/** Texto para explicar a largura de cada coluna do gráfico de throughput. */
+function formatBucketIntervalPhrase(bucketMs: number): string {
+  if (!Number.isFinite(bucketMs) || bucketMs <= 0) {
+    return 'cada intervalo do eixo horizontal'
+  }
+  if (bucketMs < 500) {
+    return `${Math.round(bucketMs)} ms`
+  }
+  const seconds = bucketMs / 1000
+  if (Math.abs(seconds - 1) < 0.06) {
+    return '1 segundo'
+  }
+  if (seconds < 10) {
+    return `${seconds.toFixed(1).replace('.', ',')} s`
+  }
+  return `${Math.round(seconds)} s`
+}
+
+/** Texto do tooltip nativo (SVG title) por coluna do throughput. */
+function formatThroughputBucketTooltip(
+  bucket: { success: number; failure: number },
+  index: number,
+  bucketMs: number,
+): string {
+  const total = bucket.success + bucket.failure
+  if (total === 0) {
+    return ''
+  }
+  const startMs = index * bucketMs
+  const endMs = (index + 1) * bucketMs
+  const windowLabel = `~${formatDuration(startMs)}–${formatDuration(endMs)}`
+
+  if (bucket.failure === 0) {
+    return `${total} ${total === 1 ? 'requisição' : 'requisições'} com sucesso (${windowLabel})`
+  }
+  if (bucket.success === 0) {
+    return `${total} ${total === 1 ? 'requisição' : 'requisições'} com falha (${windowLabel})`
+  }
+  return `${total} requisições no total: ${bucket.success} sucesso, ${bucket.failure} falha (${windowLabel})`
 }
 
 function formatPercent(ratio: number) {

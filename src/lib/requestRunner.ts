@@ -64,12 +64,31 @@ export async function runLoadTest(
           durationSeconds: config.durationSeconds,
           concurrency: config.concurrency,
         }
-      : {
-          request,
-          mode: 'count' as const,
-          totalRequests: config.totalRequests,
-          concurrency: config.concurrency,
-        }
+      : config.mode === 'rampUp'
+        ? {
+            request,
+            mode: 'rampUp' as const,
+            durationSeconds: config.durationSeconds,
+            concurrency: config.concurrency,
+            rampStartConcurrency: config.rampStartConcurrency,
+            rampDurationSeconds: config.rampDurationSeconds,
+          }
+        : config.mode === 'peak'
+          ? {
+              request,
+              mode: 'peak' as const,
+              durationSeconds: config.durationSeconds,
+              concurrency: config.concurrency,
+              rampStartConcurrency: config.rampStartConcurrency,
+              peakAscendSeconds: config.peakAscendSeconds,
+              peakDescendSeconds: config.peakDescendSeconds,
+            }
+          : {
+              request,
+              mode: 'count' as const,
+              totalRequests: config.totalRequests,
+              concurrency: config.concurrency,
+            }
 
   let response: Response
 
