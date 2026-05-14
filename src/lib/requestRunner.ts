@@ -85,7 +85,7 @@ export async function runLoadTest(
     })
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Teste de carga cancelado.')
+      throw new Error('Teste de carga cancelado.', { cause: error })
     }
     throw error
   }
@@ -171,7 +171,8 @@ export async function runLoadTest(
               })
             }
           } else if (event && event.type === 'result') {
-            const { type: _type, ...rest } = event
+            const { type, ...rest } = event
+            void type
             finalResult = rest as LoadTestResult
           } else if (event && 'error' in event && typeof event.error === 'string') {
             throw new Error(event.error)
@@ -183,7 +184,7 @@ export async function runLoadTest(
     }
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Teste de carga cancelado.')
+      throw new Error('Teste de carga cancelado.', { cause: error })
     }
     throw error
   } finally {

@@ -53,8 +53,9 @@ function substituteRawVariables(value: string): string {
 }
 
 function restoreRawVariables(formatted: string): string {
+  const NUL = String.fromCharCode(0)
   return formatted.replace(
-    /"\u0000VAR\u0000([^"\u0000]*?)\u0000"/g,
+    new RegExp(`"${NUL}VAR${NUL}([^"${NUL}]*?)${NUL}"`, 'g'),
     (_match, name: string) => `{{${name.trim()}}}`,
   )
 }

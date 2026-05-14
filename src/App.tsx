@@ -145,7 +145,7 @@ const createDefaultEnvironment = (index: number): EnvironmentItem => ({
   id: crypto.randomUUID(),
   name: index === 1 ? 'Default' : `Environment ${index}`,
   color: 'branco',
-  variables: [createRow()],
+  variables: [],
 })
 
 const createDefaultCollection = (index: number): CollectionItem => ({
@@ -313,7 +313,9 @@ function App() {
   }, [activeTab])
 
   useEffect(() => {
-    setRequestConfigTabId('body')
+    queueMicrotask(() => {
+      setRequestConfigTabId('body')
+    })
   }, [activeTabId])
 
   useEffect(() => {
@@ -983,6 +985,7 @@ function App() {
           {activeCollection && (
             <section className="panel">
               <CollectionsEditor
+                key={activeCollection.id}
                 activeCollection={activeCollection}
                 collections={collections}
                 onAddCollection={addCollection}
@@ -2500,9 +2503,11 @@ function EnvironmentEditor({
         : `env-e:${activeEnvironment.id}:${environmentModal.openKey}`
 
   useEffect(() => {
-    setEnvironmentModal((current) =>
-      current?.mode === 'edit' ? null : current,
-    )
+    queueMicrotask(() => {
+      setEnvironmentModal((current) =>
+        current?.mode === 'edit' ? null : current,
+      )
+    })
   }, [activeEnvironment.id])
 
   useEffect(() => {
@@ -2606,6 +2611,7 @@ function EnvironmentEditor({
       </p>
 
       <EnvironmentVariablesEditor
+        key={activeEnvironment.id}
         rows={activeEnvironment.variables}
         onChange={(rows) =>
           onChange({
@@ -2805,10 +2811,6 @@ function CollectionsEditor({
   const [nameModal, setNameModal] = useState<CollectionNameModalState | null>(
     null,
   )
-
-  useEffect(() => {
-    setSublistExpanded(true)
-  }, [activeCollection.id])
 
   const nameModalFocusKey =
     nameModal == null
@@ -3332,115 +3334,271 @@ function EnvironmentVariablesEditor({
   rows,
   onChange,
 }: EnvironmentVariablesEditorProps) {
+  const [expandedVariableId, setExpandedVariableId] = useState<string | null>(null)
+  const [editingDraftIds, setEditingDraftIds] = useState<Set<string>>(
+    () => new Set(),
+  )
+
+  const listedRows = useMemo(
+    () => rows.filter((row) => row.key.trim() && !editingDraftIds.has(row.id)),
+    [rows, editingDraftIds],
+  )
+
+  const draftRows = useMemo(
+    () => rows.filter((row) => editingDraftIds.has(row.id)),
+    [rows, editingDraftIds],
+  )
+
+  const listedExpandedId = useMemo(() => {
+    if (expandedVariableId == null) {
+      return null
+    }
+    return listedRows.some((row) => row.id === expandedVariableId)
+      ? expandedVariableId
+      : null
+  }, [expandedVariableId, listedRows])
+
+  const addVariableRow = () => {
+    const newRow = createRow()
+    setEditingDraftIds((prev) => new Set(prev).add(newRow.id))
+    onChange([...rows, newRow])
+  }
+
+  const commitDraft = (rowId: string) => {
+    const row = rows.find((current) => current.id === rowId)
+    if (!row?.key.trim()) {
+      return
+    }
+    setEditingDraftIds((prev) => {
+      const next = new Set(prev)
+      next.delete(rowId)
+      return next
+    })
+  }
+
+  const removeVariable = (rowId: string) => {
+    const nextRows = rows.filter((current) => current.id !== rowId)
+    if (nextRows.length === 0) {
+      setEditingDraftIds(new Set())
+      setExpandedVariableId(null)
+      onChange([])
+      return
+    }
+    setEditingDraftIds((prev) => {
+      const next = new Set(prev)
+      next.delete(rowId)
+      return next
+    })
+    setExpandedVariableId((current) => (current === rowId ? null : current))
+    onChange(nextRows)
+  }
+
+  const updateRow = (rowId: string, patch: Partial<KeyValueRow>) => {
+    onChange(
+      rows.map((current) =>
+        current.id === rowId ? { ...current, ...patch } : current,
+      ),
+    )
+    if ('key' in patch && !String(patch.key ?? '').trim()) {
+      setEditingDraftIds((prev) => new Set(prev).add(rowId))
+    }
+  }
+
   return (
     <div className="stack gap-sm">
       <div className="section-heading">
-        <h2>Variáveis</h2>
+        <h2 className="environment-variables-heading">Variável</h2>
         <button
           className="ghost-button ghost-button--compact"
           type="button"
           title="Adicionar variável"
           aria-label="Adicionar variável"
-          onClick={() => onChange([...rows, createRow()])}
+          onClick={addVariableRow}
         >
           +
         </button>
       </div>
 
-      <div className="environment-variables-list">
-        {rows.map((row) => {
-          const keyTrimmed = row.key.trim()
-          const syntaxPreview = keyTrimmed ? `{{${keyTrimmed}}}` : '{{}}'
-          const previewValue = row.value.trim() || 'Sem valor definido'
+      {listedRows.length > 0 ? (
+        <div
+          className="collections-folder-list environment-variables-compact-list"
+          aria-label="Variáveis cadastradas"
+        >
+          {listedRows.map((row) => {
+            const keyTrimmed = row.key.trim()
+            const syntaxPreview = `{{${keyTrimmed}}}`
+            const isExpanded = listedExpandedId === row.id
 
-          return (
-            <div className="environment-variable-card" key={row.id}>
-              <div className="environment-variable-card__fields">
-                <label className="field">
-                  <span>Nome da variável</span>
-                  <span className="field-preview">
-                    Nome atual:{' '}
-                    {keyTrimmed ? (
-                      <code>{keyTrimmed}</code>
-                    ) : (
-                      <span className="subtle">—</span>
-                    )}
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="ex: baseUrl"
-                    value={row.key}
-                    onChange={(event) =>
-                      onChange(
-                        rows.map((current) =>
-                          current.id === row.id
-                            ? { ...current, key: event.target.value }
-                            : current,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-
-                <label className="field">
-                  <span>Valor</span>
-                  <span className="field-preview">Valor atual: {previewValue}</span>
-                  <input
-                    type="text"
-                    placeholder="ex: https://api.exemplo.com"
-                    value={row.value}
-                    onChange={(event) =>
-                      onChange(
-                        rows.map((current) =>
-                          current.id === row.id
-                            ? { ...current, value: event.target.value }
-                            : current,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-
-                <p className="subtle helper-text environment-variable-card__usage">
-                  Uso da variável: <code>{syntaxPreview}</code>
-                </p>
-
-                <div className="environment-variable-card__footer">
-                  <label className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={row.enabled}
-                      onChange={(event) =>
-                        onChange(
-                          rows.map((current) =>
-                            current.id === row.id
-                              ? { ...current, enabled: event.target.checked }
-                              : current,
-                          ),
-                        )
-                      }
-                    />
-                    <span>
-                      {row.enabled ? 'Variável ativa' : 'Variável inativa'}
+            return (
+              <div key={row.id} className="environment-variable-compact-branch">
+                <button
+                  type="button"
+                  className={`collections-folder-item environment-variable-compact-item${
+                    isExpanded ? ' is-active' : ''
+                  }`}
+                  aria-expanded={isExpanded}
+                  onClick={() =>
+                    setExpandedVariableId((current) =>
+                      current === row.id ? null : row.id,
+                    )
+                  }
+                >
+                  <code className="environment-variable-compact-item__name">
+                    {keyTrimmed}
+                  </code>
+                  {!row.enabled ? (
+                    <span className="environment-variable-compact-item__badge subtle">
+                      inativa
                     </span>
+                  ) : null}
+                </button>
+
+                {isExpanded ? (
+                  <div className="environment-variable-expand-panel">
+                    <label className="field">
+                      <span>Nome</span>
+                      <input
+                        type="text"
+                        placeholder="ex: baseUrl"
+                        value={row.key}
+                        onChange={(event) =>
+                          updateRow(row.id, { key: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Valor</span>
+                      <input
+                        type="text"
+                        placeholder="ex: https://api.exemplo.com"
+                        value={row.value}
+                        onChange={(event) =>
+                          updateRow(row.id, { value: event.target.value })
+                        }
+                      />
+                    </label>
+                    <p className="subtle helper-text environment-variable-card__usage">
+                      Uso: <code>{syntaxPreview}</code>
+                    </p>
+                    <div className="environment-variable-card__footer">
+                      <label className="toggle">
+                        <input
+                          type="checkbox"
+                          checked={row.enabled}
+                          onChange={(event) =>
+                            updateRow(row.id, { enabled: event.target.checked })
+                          }
+                        />
+                        <span>
+                          {row.enabled ? 'Variável ativa' : 'Variável inativa'}
+                        </span>
+                      </label>
+                      <button
+                        className="danger-button danger-button--compact"
+                        type="button"
+                        onClick={() => removeVariable(row.id)}
+                      >
+                        Excluir
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      ) : null}
+
+      {draftRows.length > 0 ? (
+        <div className="environment-variables-list environment-variables-list--drafts">
+          {draftRows.map((row) => {
+            const keyTrimmed = row.key.trim()
+            const syntaxPreview = keyTrimmed ? `{{${keyTrimmed}}}` : '{{}}'
+            const canCommit = Boolean(keyTrimmed)
+
+            return (
+              <div
+                className="environment-variable-card environment-variable-card--draft"
+                key={row.id}
+              >
+                <div className="environment-variable-card__fields environment-variable-card__fields--compact-draft">
+                  <label className="field">
+                    <span>Nome</span>
+                    <input
+                      type="text"
+                      placeholder="ex: baseUrl"
+                      value={row.key}
+                      onChange={(event) =>
+                        updateRow(row.id, { key: event.target.value })
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && row.key.trim()) {
+                          event.preventDefault()
+                          commitDraft(row.id)
+                        }
+                      }}
+                    />
                   </label>
 
-                  <button
-                    className="danger-button danger-button--compact"
-                    type="button"
-                    onClick={() => {
-                      const nextRows = rows.filter((current) => current.id !== row.id)
-                      onChange(nextRows.length === 0 ? [createRow()] : nextRows)
-                    }}
-                  >
-                    Excluir
-                  </button>
+                  <label className="field">
+                    <span>Valor</span>
+                    <input
+                      type="text"
+                      placeholder="https://api.exemplo.com (opcional)"
+                      value={row.value}
+                      onChange={(event) =>
+                        updateRow(row.id, { value: event.target.value })
+                      }
+                    />
+                  </label>
+
+                  <p className="subtle helper-text environment-variable-card__usage environment-variable-card__usage--tight">
+                    Uso: <code>{syntaxPreview}</code>
+                  </p>
+
+                  <div className="environment-variable-card__footer environment-variable-card__footer--draft">
+                    <label className="toggle">
+                      <input
+                        type="checkbox"
+                        checked={row.enabled}
+                        onChange={(event) =>
+                          updateRow(row.id, { enabled: event.target.checked })
+                        }
+                      />
+                      <span>
+                        {row.enabled ? 'Ativa' : 'Inativa'}
+                      </span>
+                    </label>
+
+                    <div className="environment-variable-card__draft-actions">
+                      <button
+                        className="primary-button primary-button--compact"
+                        type="button"
+                        disabled={!canCommit}
+                        title={
+                          canCommit
+                            ? 'Concluir e listar a variável'
+                            : 'Informe o nome da variável'
+                        }
+                        onClick={() => commitDraft(row.id)}
+                      >
+                        Salvar
+                      </button>
+                      <button
+                        className="danger-button danger-button--compact"
+                        type="button"
+                        onClick={() => removeVariable(row.id)}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -3547,16 +3705,18 @@ function hydrateHistoryEntry(raw: HistoryEntry): HistoryEntry {
 }
 
 function hydrateEnvironment(raw: EnvironmentItem): EnvironmentItem {
+  const mappedVariables =
+    raw.variables?.map((row) => ({
+      ...row,
+      id: row.id ?? crypto.randomUUID(),
+      enabled: row.enabled ?? true,
+    })) ?? []
+
   return {
     id: raw.id ?? crypto.randomUUID(),
     name: raw.name ?? 'Environment',
     color: raw.color ?? 'branco',
-    variables:
-      raw.variables?.map((row) => ({
-        ...row,
-        id: row.id ?? crypto.randomUUID(),
-        enabled: row.enabled ?? true,
-      })) ?? [createRow()],
+    variables: mappedVariables.filter((row) => row.key.trim() !== ''),
   }
 }
 

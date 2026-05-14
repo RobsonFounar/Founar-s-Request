@@ -1,6 +1,6 @@
 import { Fragment, useMemo } from 'react'
 
-import { segmentJson, type Segment } from './VariableHighlight'
+import { segmentJson, type Segment } from '../lib/jsonHighlightSegments'
 
 type JsonViewerProps = {
   code: string
